@@ -30,6 +30,14 @@ from app.utils.helpers import generate_id
 
 logger = logging.getLogger("visionguard.scheduler")
 
+
+def _fmt_utc(dt: datetime) -> str:
+    """Format a datetime as ISO 8601 with explicit UTC 'Z' suffix."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+
+
 # Global scheduler instance
 scheduler = AsyncIOScheduler()
 
@@ -199,7 +207,7 @@ async def hourly_environmental_capture() -> None:
         await ws_manager.broadcast("historyChanged", [
             {
                 "id": h.id,
-                "timestamp": h.timestamp.isoformat(),
+                "timestamp": _fmt_utc(h.timestamp),
                 "roomId": h.room_id,
                 "cameraId": h.camera_id,
                 "temperature": h.temperature,

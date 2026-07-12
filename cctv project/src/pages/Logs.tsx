@@ -66,7 +66,7 @@ export const Logs: React.FC = () => {
     if (filterRisk !== 'all' && record.riskLevel !== filterRisk) return false;
     
     if (searchTerm) {
-      const formattedDate = new Date(record.timestamp).toLocaleString().toLowerCase();
+      const formattedDate = new Date(record.timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }).toLowerCase();
       const tempStr = record.temperature.toString();
       const humStr = record.humidity.toString();
       const riskStr = record.riskLevel.toLowerCase();
@@ -78,13 +78,20 @@ export const Logs: React.FC = () => {
       }
     }
 
+    // Date inputs give "YYYY-MM-DD" which JS parses as UTC midnight.
+    // record.timestamp comes from backend as "...Z" (UTC).
+    // Convert start/end to IST-midnight boundaries for a correct comparison.
     if (startDate) {
-      if (new Date(record.timestamp) < new Date(startDate)) return false;
+      // Parse the date string as IST start-of-day (UTC midnight + 5:30 offset)
+      const [sy, sm, sd] = startDate.split('-').map(Number);
+      const startUTC = new Date(Date.UTC(sy, sm - 1, sd, 0, 0, 0) - 5.5 * 60 * 60 * 1000); // subtract IST offset
+      if (new Date(record.timestamp) < startUTC) return false;
     }
     if (endDate) {
-      const eDate = new Date(endDate);
-      eDate.setHours(23, 59, 59, 999);
-      if (new Date(record.timestamp) > eDate) return false;
+      const [ey, em, ed] = endDate.split('-').map(Number);
+      // End of day IST = next day UTC 00:00 - IST offset (i.e. 18:30 UTC of the selected day)
+      const endUTC = new Date(Date.UTC(ey, em - 1, ed, 23, 59, 59, 999) - 5.5 * 60 * 60 * 1000);
+      if (new Date(record.timestamp) > endUTC) return false;
     }
 
     return true;
@@ -168,7 +175,7 @@ export const Logs: React.FC = () => {
     ctx.fillRect(15, canvas.height - 32, canvas.width - 30, 16);
     ctx.fillStyle = '#64748b';
     ctx.font = '8px "JetBrains Mono", monospace';
-    ctx.fillText(`SNAP TIMESTAMP: ${new Date(selectedRecord.timestamp).toLocaleString()} | ZONE: SERVER ROOM ALPHA`, 20, canvas.height - 20);
+    ctx.fillText(`SNAP TIMESTAMP: ${new Date(selectedRecord.timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })} IST | ZONE: SERVER ROOM ALPHA`, 20, canvas.height - 20);
 
     ctx.strokeStyle = '#ef4444';
     ctx.lineWidth = 1.5;
@@ -319,7 +326,16 @@ export const Logs: React.FC = () => {
                 return (
                   <tr key={record.id}>
                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
-                      {dateObj.toLocaleDateString()} {dateObj.toLocaleTimeString()}
+                      {new Date(record.timestamp).toLocaleString('en-IN', {
+                        timeZone: 'Asia/Kolkata',
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: true
+                      })}
                     </td>
                     <td style={{ fontWeight: 600 }}>Server Room Alpha</td>
                     <td style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Camera-001</td>

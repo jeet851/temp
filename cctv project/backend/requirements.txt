@@ -53,7 +53,7 @@ aiosqlite==0.21.0
 # ============================================
 
 # --- OCR Engine ---
-easyocr>=1.7.2                    # Deep-learning OCR; no system Tesseract required
+# easyocr>=1.7.2                    # Deep-learning OCR; no system Tesseract required
 
 # --- Computer Vision / Image Processing ---
 opencv-python-headless>=4.8.0     # Frame capture from RTSP + image preprocessing

@@ -1,5 +1,17 @@
-from datetime import datetime
-from pydantic import BaseModel, Field
+from datetime import datetime, timezone
+from pydantic import BaseModel, Field, field_serializer
+
+
+def _to_utc_z(v: datetime) -> str:
+    """Serialize a datetime as ISO 8601 with explicit 'Z' UTC suffix.
+
+    SQLite returns naive datetimes from the DB. We always store UTC, so we
+    attach the UTC timezone before formatting so the browser receives a
+    properly-tagged timestamp it can convert to local IST automatically.
+    """
+    if v.tzinfo is None:
+        v = v.replace(tzinfo=timezone.utc)
+    return v.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
 
 
 class EnvironmentalReadingBase(BaseModel):
@@ -26,6 +38,10 @@ class EnvironmentalReadingRead(EnvironmentalReadingBase):
     timestamp: datetime
     created_at: datetime
 
+    @field_serializer('timestamp', 'created_at')
+    def serialize_dt(self, v: datetime) -> str:
+        return _to_utc_z(v)
+
     class Config:
         from_attributes = True
 
@@ -44,6 +60,10 @@ class EnvironmentalHistoryRead(BaseModel):
     risk_level: str  # low | medium | high
     image_path: str | None = None
     created_at: datetime
+
+    @field_serializer('timestamp', 'created_at')
+    def serialize_dt(self, v: datetime) -> str:
+        return _to_utc_z(v)
 
     class Config:
         from_attributes = True

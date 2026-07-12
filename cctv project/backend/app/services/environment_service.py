@@ -2,6 +2,13 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
+
+def _fmt_utc(dt: datetime) -> str:
+    """Format a datetime as ISO 8601 with explicit UTC 'Z' suffix."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+
 from app.models.environmental_reading import EnvironmentalReading
 from app.models.environmental_history import EnvironmentalHistory
 from app.repositories.environment_repo import EnvironmentRepository
@@ -88,9 +95,11 @@ class EnvironmentService:
             status=status
         )
         await self.env_repo.create_reading(reading)
+        await self.db.commit()
+        await self.db.refresh(reading)
         await ws_manager.broadcast("reading", {
             "id": reading.id,
-            "timestamp": reading.timestamp.isoformat(),
+            "timestamp": _fmt_utc(reading.timestamp),
             "roomId": reading.room_id,
             "cameraId": reading.camera_id,
             "temperature": reading.temperature,
@@ -132,7 +141,7 @@ class EnvironmentService:
                 await ws_manager.broadcast("alert", {
                     "alert": {
                         "id": alert.id,
-                        "timestamp": alert.timestamp.isoformat(),
+                        "timestamp": _fmt_utc(alert.timestamp),
                         "roomId": alert.room_id,
                         "cameraId": alert.camera_id,
                         "type": alert.type,
@@ -150,7 +159,7 @@ class EnvironmentService:
                 await ws_manager.broadcast("alertsChanged", [
                     {
                         "id": a.id,
-                        "timestamp": a.timestamp.isoformat(),
+                        "timestamp": _fmt_utc(a.timestamp),
                         "roomId": a.room_id,
                         "cameraId": a.camera_id,
                         "type": a.type,
@@ -160,7 +169,7 @@ class EnvironmentService:
                         "status": a.status,
                         "imageUrl": a.image_url,
                         "acknowledgedBy": a.acknowledged_by,
-                        "acknowledgedAt": a.acknowledged_at.isoformat() if a.acknowledged_at else None
+                        "acknowledgedAt": _fmt_utc(a.acknowledged_at) if a.acknowledged_at else None
                     } for a in all_alerts
                 ])
 
@@ -175,6 +184,7 @@ class EnvironmentService:
         if room.status != room_status:
             room.status = room_status
             await self.room_repo.update(room)
+            await self.db.commit()
             all_rooms = await self.room_repo.list_all()
             await ws_manager.broadcast("rooms", [
                 {"id": r.id, "name": r.name, "location": r.location, "status": r.status}
@@ -208,13 +218,15 @@ class EnvironmentService:
             image_path=f"media/environment/snapshot_room-001_manual_{int(now.timestamp())}.jpg"
         )
         await self.env_repo.create_history(history)
-        
+        await self.db.commit()
+        await self.db.refresh(history)
+
         # Broadcast history update
         all_history, _ = await self.env_repo.list_history(page=1, per_page=100)
         await ws_manager.broadcast("historyChanged", [
             {
                 "id": h.id,
-                "timestamp": h.timestamp.isoformat(),
+                "timestamp": _fmt_utc(h.timestamp),
                 "roomId": h.room_id,
                 "cameraId": h.camera_id,
                 "temperature": h.temperature,
