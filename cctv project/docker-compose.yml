@@ -1,0 +1,188 @@
+# =====================================================================
+# VisionGuard — Multi-Container Production Docker Compose Specification
+# =====================================================================
+version: '3.8'
+
+services:
+  # ── 1. PostgreSQL Production Database ──
+  db:
+    image: postgres:16-alpine
+    container_name: visionguard_db
+    restart: always
+    environment:
+      POSTGRES_DB: visionguard
+      POSTGRES_USER: vg_admin
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-visionguard2026}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/postgresql.conf:/etc/postgresql/postgresql.conf
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vg_admin -d visionguard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── 2. Redis Caching & Queue Broker ──
+  redis:
+    image: redis:7-alpine
+    container_name: visionguard_redis
+    restart: always
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - redisdata:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── 3. FastAPI Web Application API ──
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: visionguard_backend
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vg_admin:${DATABASE_PASSWORD:-visionguard2026}@db:5432/visionguard
+      - REDIS_URL=redis://:redis_production_pass_2026@redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-vg-production-secret-key-2026-change-this}
+      - JWT_ALGORITHM=HS256
+      - APP_ENV=production
+      - DEBUG=false
+    volumes:
+      - ./backend/media:/app/media
+      - ./backend/logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── 4. Celery Asynchronous Task Worker ──
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: visionguard_celery_worker
+    restart: always
+    command: celery -A app.core.celery worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vg_admin:${DATABASE_PASSWORD:-visionguard2026}@db:5432/visionguard
+      - REDIS_URL=redis://:redis_production_pass_2026@redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-vg-production-secret-key-2026-change-this}
+      - APP_ENV=production
+    volumes:
+      - ./backend/media:/app/media
+      - ./backend/logs:/app/logs
+    depends_on:
+      - redis
+      - db
+
+  # ── 5. Celery Beat Scheduler ──
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: visionguard_celery_beat
+    restart: always
+    command: celery -A app.core.celery beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vg_admin:${DATABASE_PASSWORD:-visionguard2026}@db:5432/visionguard
+      - REDIS_URL=redis://:redis_production_pass_2026@redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-vg-production-secret-key-2026-change-this}
+      - APP_ENV=production
+    volumes:
+      - ./backend/media:/app/media
+      - ./backend/logs:/app/logs
+    depends_on:
+      - redis
+      - db
+
+  # ── 6. Frontend served via local Nginx static proxy ──
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: visionguard_frontend
+    restart: always
+    depends_on:
+      - backend
+
+  # ── 7. Secure Nginx Gateway & Reverse Proxy ──
+  nginx_gateway:
+    image: nginx:1.27-alpine
+    container_name: visionguard_nginx_gateway
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./backend/media:/etc/nginx/html/media:ro
+    depends_on:
+      - frontend
+      - backend
+
+  # ── 8. Prometheus System Metrics Scraper ──
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: visionguard_prometheus
+    restart: always
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+
+  # ── 9. Grafana Metrics Dashboard ──
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: visionguard_grafana
+    restart: always
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-visionguardadmin2026}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+
+  # ── 10. Grafana Loki Log Aggregator ──
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: visionguard_loki
+    restart: always
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./monitoring/loki-config.yaml:/etc/loki/local-config.yaml
+
+  # ── 11. Promtail Agent ──
+  promtail:
+    image: grafana/promtail:2.9.4
+    container_name: visionguard_promtail
+    restart: always
+    volumes:
+      - /var/log:/var/log
+      - ./backend/logs:/var/log/visionguard
+      - ./monitoring/promtail-config.yaml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+volumes:
+  pgdata:
+  redisdata:
+  prometheus_data:
+  grafana_data:

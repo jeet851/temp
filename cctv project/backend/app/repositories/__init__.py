@@ -1,0 +1,1 @@
+"""VisionGuard — Repository pattern package."""

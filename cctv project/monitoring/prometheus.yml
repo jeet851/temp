@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # ── 1. FastAPI Backend Metrics ──
+  - job_name: 'visionguard-backend'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['backend:8000']
+        labels:
+          application: 'VisionGuard API'
+
+  # ── 2. Redis Metrics (if redis_exporter deployed) ──
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+
+  # ── 3. Prometheus Self-Monitoring ──
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

@@ -1,0 +1,1 @@
+"""VisionGuard — WebSocket package."""

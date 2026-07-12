@@ -1,0 +1,1 @@
+"""VisionGuard — Background scheduler package."""

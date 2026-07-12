@@ -1,0 +1,41 @@
+# ============================================
+# VisionGuard — Multi-Container Docker Compose
+# ============================================
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: visionguard_db
+    restart: always
+    environment:
+      POSTGRES_DB: visionguard
+      POSTGRES_USER: vg_admin
+      POSTGRES_PASSWORD: visionguard2026
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: visionguard_backend
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://vg_admin:visionguard2026@db:5432/visionguard
+      - JWT_SECRET_KEY=vg-production-secret-key-2026-change-this
+      - JWT_ALGORITHM=HS256
+      - APP_ENV=production
+      - DEBUG=false
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    volumes:
+      - ./media:/app/media
+      - ./logs:/app/logs
+
+volumes:
+  pgdata:

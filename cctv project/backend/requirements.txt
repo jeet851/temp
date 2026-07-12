@@ -1,0 +1,67 @@
+# ============================================
+# VisionGuard Backend — Python Dependencies
+# ============================================
+
+# --- Core Framework ---
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+python-multipart==0.0.20
+
+# --- Database ---
+sqlalchemy[asyncio]==2.0.41
+asyncpg==0.30.0
+alembic==1.16.2
+
+# --- Validation & Serialization ---
+pydantic==2.11.3
+pydantic-settings==2.9.1
+email-validator==2.2.0
+
+# --- Authentication ---
+python-jose[cryptography]==3.4.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.3.0
+
+# --- Scheduling ---
+apscheduler==3.11.0
+
+# --- Export Generation ---
+openpyxl==3.1.5
+
+# --- HTTP / WebSocket ---
+websockets==15.0.1
+
+# --- Environment ---
+python-dotenv==1.1.0
+
+# --- Logging ---
+python-json-logger==3.3.0
+
+# --- CORS / Security ---
+# (built into FastAPI middleware)
+
+# --- Testing ---
+pytest==8.4.1
+pytest-asyncio==1.0.0
+httpx==0.28.1
+
+# --- Dev Utilities ---
+aiosqlite==0.21.0
+
+# ============================================
+# Phase 2: OCR Pipeline Dependencies
+# ============================================
+
+# --- OCR Engine ---
+easyocr>=1.7.2                    # Deep-learning OCR; no system Tesseract required
+
+# --- Computer Vision / Image Processing ---
+opencv-python-headless>=4.8.0     # Frame capture from RTSP + image preprocessing
+Pillow>=10.0.0                    # Image loading, format conversion
+numpy>=2.0.0                      # Python 3.13 requires numpy>=2.0 (pre-built wheels)
+
+# ============================================
+# Phase 3: Reporting & PDF Engine Dependencies
+# ============================================
+reportlab>=4.0.0                  # PDF document generation
+matplotlib>=3.8.0                 # Trend and compliance charts generation
