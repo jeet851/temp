@@ -398,44 +398,96 @@ def _run_full_pipeline(
     """
     Core OCR pipeline. Accepts a BGR numpy image, runs full extraction,
     and returns an OcrResult dataclass.
+    Now updated to support dynamic layout detection for devices like HTC-1.
     """
     cfg = get_ocr_config()
-    temp_roi = tuple(cfg["temp_roi"])
-    hum_roi = tuple(cfg["hum_roi"])
     min_confidence = cfg["ocr_confidence_threshold"]
     engine = cfg["ocr_engine"]
-
+    
     start_ms = int(time.time() * 1000)
 
-    # --- Crop ROI regions ---
-    temp_crop_raw = _crop_roi(img, temp_roi)
-    hum_crop_raw = _crop_roi(img, hum_roi)
+    temp_value = None
+    hum_value = None
+    temp_conf = 0.0
+    hum_conf = 0.0
+    temp_raw = ""
+    hum_raw = ""
+    temp_roi_found = list(cfg["temp_roi"])
+    hum_roi_found = list(cfg["hum_roi"])
 
-    if temp_crop_raw.size == 0 or hum_crop_raw.size == 0:
-        raise ValueError(
-            f"ROI crop produced empty image. Check coordinates: temp_roi={temp_roi}, hum_roi={hum_roi}. "
-            f"Image size: {img.shape[1]}x{img.shape[0]}."
-        )
-
-    # --- Pre-process ---
-    temp_proc = _preprocess_for_ocr(temp_crop_raw)
-    hum_proc = _preprocess_for_ocr(hum_crop_raw)
-
-    # --- OCR extraction ---
     if engine == "easyocr":
-        temp_raw, temp_conf = _run_easyocr(temp_proc)
-        hum_raw, hum_conf = _run_easyocr(hum_proc)
+        reader = _get_easyocr_reader()
+        if reader is not None:
+            # 1. Pre-process full image for better text extraction
+            # Resize image to a manageable size to speed up OCR while preserving detail
+            import cv2
+            h, w = img.shape[:2]
+            scale = 1.0
+            if w > 1280:
+                scale = 1280.0 / w
+                resized_img = cv2.resize(img, (int(w * scale), int(h * scale)))
+            else:
+                resized_img = img
+
+            # 2. Run OCR on the full image
+            results = reader.readtext(resized_img, detail=1, paragraph=False)
+            
+            # 3. Parse results heuristically
+            # Look for temperature (often has decimal point or 'C') and humidity (often has '%')
+            potential_temps = []
+            potential_hums = []
+
+            for bbox, text, prob in results:
+                # Scale bounding box back to original image size
+                orig_bbox = [[int(pt[0]/scale), int(pt[1]/scale)] for pt in bbox]
+                x_min = min([pt[0] for pt in orig_bbox])
+                y_min = min([pt[1] for pt in orig_bbox])
+                x_max = max([pt[0] for pt in orig_bbox])
+                y_max = max([pt[1] for pt in orig_bbox])
+                roi = [x_min, y_min, x_max - x_min, y_max - y_min]
+
+                text_clean = text.replace("O", "0").replace("o", "0").replace("I", "1").replace("l", "1").strip().upper()
+                
+                # Check for Humidity (%)
+                if "%" in text_clean or "RH" in text_clean:
+                    val = _parse_numeric_value(text_clean, 0.0, 100.0, "humidity_candidate")
+                    if val is not None:
+                        potential_hums.append((val, prob, text, roi))
+                        continue
+                
+                # Check for Temperature (C or decimal)
+                if "C" in text_clean or "." in text_clean:
+                    val = _parse_numeric_value(text_clean, -40.0, 80.0, "temperature_candidate")
+                    if val is not None:
+                        potential_temps.append((val, prob, text, roi))
+                        continue
+                        
+                # Generic number fallback
+                val = _parse_numeric_value(text_clean, -40.0, 100.0, "generic_candidate")
+                if val is not None:
+                    # If it has no decimal, it might be humidity
+                    if "." not in text_clean and 10 <= val <= 99:
+                        potential_hums.append((val, prob, text, roi))
+                    # Otherwise could be temp
+                    if -10 <= val <= 50:
+                        potential_temps.append((val, prob, text, roi))
+
+            # Select the best candidates
+            if potential_temps:
+                # Sort by confidence
+                potential_temps.sort(key=lambda x: x[1], reverse=True)
+                temp_value, temp_conf, temp_raw, temp_roi_found = potential_temps[0]
+
+            if potential_hums:
+                potential_hums.sort(key=lambda x: x[1], reverse=True)
+                hum_value, hum_conf, hum_raw, hum_roi_found = potential_hums[0]
+
+            logger.info(
+                "[OCR] Smart extraction — Temp: %s (conf=%.2f), Hum: %s (conf=%.2f)",
+                temp_value, temp_conf, hum_value, hum_conf,
+            )
     else:
-        raise ValueError(f"Unsupported OCR engine: '{engine}'. Only 'easyocr' is supported.")
-
-    logger.info(
-        "[OCR] Raw extraction — Temp: %r (conf=%.2f), Hum: %r (conf=%.2f)",
-        temp_raw, temp_conf, hum_raw, hum_conf,
-    )
-
-    # --- Parse digits ---
-    temp_value = _parse_numeric_value(temp_raw, -40.0, 80.0, "temperature")
-    hum_value = _parse_numeric_value(hum_raw, 0.0, 100.0, "humidity")
+        logger.warning(f"Unsupported OCR engine: '{engine}'.")
 
     # --- Fallback: if confidence too low or parse failed, use simulated value ---
     if temp_value is None or temp_conf < min_confidence:
@@ -461,7 +513,7 @@ def _run_full_pipeline(
     if save_annotated:
         try:
             saved_path = _save_annotated_frame(
-                img, temp_roi, hum_roi, temp_value, hum_value, room_id
+                img, tuple(temp_roi_found), tuple(hum_roi_found), temp_value, hum_value, room_id
             )
         except Exception as e:
             logger.warning("Failed to save annotated frame: %s", e)
@@ -479,13 +531,13 @@ def _run_full_pipeline(
             raw_text=temp_raw,
             value=temp_value,
             confidence=round(temp_conf, 3),
-            roi=list(temp_roi),
+            roi=list(temp_roi_found),
         ),
         hum_detail=OcrDigitResult(
             raw_text=hum_raw,
             value=hum_value,
             confidence=round(hum_conf, 3),
-            roi=list(hum_roi),
+            roi=list(hum_roi_found),
         ),
         source=source,
         processing_ms=elapsed_ms,
