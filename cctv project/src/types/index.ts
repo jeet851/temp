@@ -25,6 +25,8 @@ export interface EnvironmentalReading {
   humidity: number;
   ocrConfidence: number;
   status: 'normal' | 'warning' | 'critical';
+  isSynthetic: boolean;   // true = random fallback, false = real OCR read
+  ocrSource?: string;     // 'rtsp' | 'upload' | 'synthetic' | 'test'
 }
 
 export interface Alert {
@@ -53,6 +55,8 @@ export interface EnvironmentalHistory {
   fireDetected: boolean;
   riskLevel: 'low' | 'medium' | 'high';
   imagePath: string;
+  isSynthetic: boolean;   // true = synthetic fallback, false = real OCR
+  ocrSource?: string;     // 'rtsp' | 'upload' | 'synthetic' | 'test'
 }
 
 export interface Threshold {

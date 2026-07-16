@@ -189,10 +189,12 @@ export const Dashboard: React.FC = () => {
       ctx.font = '700 8px "JetBrains Mono", monospace';
       ctx.fillText(`OCR CONF: ${latestReading.ocrConfidence.toFixed(1)}%`, monX + 24, monY + 99);
 
-      ctx.fillStyle = '#10b981';
+      // ✅ Step 4c: Show SYNTHETIC badge vs LIVE verified badge
+      const isSynth = (latestReading as any).isSynthetic;
+      ctx.fillStyle = isSynth ? '#b45309' : '#10b981';
       ctx.fillRect(monX + 148, monY + 88, 115, 16);
       ctx.fillStyle = '#ffffff';
-      ctx.fillText('STATE: VERIFIED', monX + 154, monY + 99);
+      ctx.fillText(isSynth ? '⚠ SYNTHETIC DATA' : 'STATE: LIVE/OCR', monX + 154, monY + 99);
 
       ctx.strokeStyle = 'rgba(34, 197, 94, 0.4)';
       ctx.lineWidth = 1;

@@ -144,6 +144,9 @@ async def trigger_capture(
         room_id=payload.room_id,
         temp=result.temperature,
         hum=result.humidity,
+        ocr_confidence=result.ocr_confidence,       # ✅ M-01: real value
+        ocr_source=result.source,                   # ✅ m-07: source tracking
+        image_saved_path=result.image_saved_path,   # ✅ m-07: real snapshot path
     )
 
     logger.info(

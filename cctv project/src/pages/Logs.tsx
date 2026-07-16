@@ -315,6 +315,7 @@ export const Logs: React.FC = () => {
                 <th style={{ textAlign: 'center' }}>Smoke Status</th>
                 <th style={{ textAlign: 'center' }}>Fire Status</th>
                 <th>AI Risk Level</th>
+                <th style={{ textAlign: 'center' }}>OCR Source</th>
                 <th style={{ textAlign: 'center' }}>Snapshot</th>
                 <th style={{ textAlign: 'center' }}>Details</th>
               </tr>
@@ -363,6 +364,26 @@ export const Logs: React.FC = () => {
                       <span className={`status-badge ${record.riskLevel === 'high' ? 'critical' : record.riskLevel === 'medium' ? 'warning' : 'normal'}`} style={{ textTransform: 'capitalize' }}>
                         {record.riskLevel} Risk
                       </span>
+                    </td>
+                    {/* ✅ Step 4c: Synthetic data indicator */}
+                    <td style={{ textAlign: 'center' }}>
+                      {record.isSynthetic ? (
+                        <span
+                          className="status-badge warning"
+                          style={{ fontSize: '0.65rem', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                          title="This reading was randomly generated — not from a real OCR extraction"
+                        >
+                          ⚠ SYNTHETIC
+                        </span>
+                      ) : (
+                        <span
+                          className="status-badge normal"
+                          style={{ fontSize: '0.65rem', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                          title={`Source: ${record.ocrSource || 'ocr'}`}
+                        >
+                          ✓ {(record.ocrSource || 'OCR').toUpperCase()}
+                        </span>
+                      )}
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       {/* LCD Display Thumbnail Simulation */}

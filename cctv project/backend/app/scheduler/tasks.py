@@ -86,10 +86,13 @@ async def scheduled_ocr_capture() -> None:
                     room_id="room-001",
                     temp=result.temperature,
                     hum=result.humidity,
+                    ocr_confidence=result.ocr_confidence,
+                    ocr_source=result.source,
+                    image_saved_path=result.image_saved_path,
                 )
                 logger.info(
-                    "[Scheduler] Synthetic OCR capture saved: temp=%.1f°C hum=%.1f%%RH",
-                    result.temperature, result.humidity,
+                    "[Scheduler] Synthetic OCR capture saved: temp=%.1f°C hum=%.1f%%RH (source=%s)",
+                    result.temperature, result.humidity, result.source,
                 )
             except Exception as exc:
                 logger.exception("[Scheduler] Synthetic fallback capture failed: %s", exc)
@@ -143,10 +146,13 @@ async def scheduled_ocr_capture() -> None:
                     room_id=room_id,
                     temp=result.temperature,
                     hum=result.humidity,
+                    ocr_confidence=result.ocr_confidence,   # ✅ Real confidence value
+                    ocr_source=result.source,               # ✅ "rtsp" | "synthetic"
+                    image_saved_path=result.image_saved_path, # ✅ Real annotated snapshot path
                 )
                 logger.info(
-                    "[Scheduler] [OK] Saved capture for room=%s: %.1f°C / %.1f%%RH",
-                    room_id, result.temperature, result.humidity,
+                    "[Scheduler] [OK] Saved capture for room=%s: %.1f°C / %.1f%%RH (source=%s, conf=%.1f%%)",
+                    room_id, result.temperature, result.humidity, result.source, result.ocr_confidence,
                 )
             except Exception as save_err:
                 logger.error("[Scheduler] Failed to save capture for room=%s: %s", room_id, save_err)
@@ -259,16 +265,9 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
 
-    # Legacy hourly compliance snapshot (runs every 60s in dev, 3600s in prod)
-    snapshot_interval = 60 if settings.app_env == "development" else 3600
-    scheduler.add_job(
-        hourly_environmental_capture,
-        "interval",
-        seconds=snapshot_interval,
-        id="hourly_capture",
-        name="Hourly Environmental Snapshot",
-        replace_existing=True,
-    )
+    # NOTE: Legacy hourly_environmental_capture job REMOVED (audit M-02).
+    # It duplicated history records that scheduled_ocr_capture already writes.
+    # The function is preserved below for reference only.
 
     # Daily cleanup
     scheduler.add_job(

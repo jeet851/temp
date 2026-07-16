@@ -69,6 +69,11 @@ async def manual_capture(
     """Manually trigger a snapshot frame capture and write to environmental history logs."""
     service = EnvironmentService(db)
     record = await service.trigger_manual_capture(
-        payload.room_id, payload.temperature, payload.humidity
+        room_id=payload.room_id,
+        temp=payload.temperature,
+        hum=payload.humidity,
+        ocr_confidence=0.0,         # Manual API payload — no real OCR confidence
+        ocr_source="synthetic",     # Not from a camera pipeline
+        image_saved_path=None,
     )
     return APIResponse(success=True, message="Manual capture logged.", data=EnvironmentalHistoryRead.from_orm(record))

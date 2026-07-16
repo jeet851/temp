@@ -55,10 +55,25 @@ class EnvironmentService:
             room_id, start_date, end_date, risk_level, search_query, page, per_page
         )
 
-    async def trigger_manual_capture(self, room_id: str, temp: float, hum: float) -> EnvironmentalHistory:
+    async def trigger_manual_capture(
+        self,
+        room_id: str,
+        temp: float,
+        hum: float,
+        ocr_confidence: float = 0.0,
+        ocr_source: str = "synthetic",
+        image_saved_path: str | None = None,
+    ) -> EnvironmentalHistory:
         """
-        Manually trigger an OCR snapshot.
-        Inserts a reading, checks thresholds, creates alert if needed, and writes to history.
+        Trigger an OCR capture and persist the results.
+
+        Args:
+            room_id: Target room identifier.
+            temp: Extracted temperature value (°C).
+            hum: Extracted humidity value (%RH).
+            ocr_confidence: Real OCR confidence (0–100). Defaults to 0.0 for synthetics.
+            ocr_source: Frame source — "rtsp" | "upload" | "synthetic" | "test".
+            image_saved_path: Annotated snapshot path from the OCR pipeline (or None).
         """
         room = await self.room_repo.get_by_id(room_id)
         if not room:
@@ -82,6 +97,9 @@ class EnvironmentService:
         elif temp >= config.temp_warning or hum >= config.hum_warning:
             status = "warning"
 
+        # Determine whether this is a synthetic (fallback) reading
+        is_synthetic = ocr_source in ("synthetic", "test")
+
         # Create Reading
         now = datetime.now(timezone.utc)
         reading = EnvironmentalReading(
@@ -91,8 +109,10 @@ class EnvironmentService:
             camera_id=camera.id,
             temperature=temp,
             humidity=hum,
-            ocr_confidence=99.4,
-            status=status
+            ocr_confidence=ocr_confidence,   # ✅ Fixed M-01: real value, not hardcoded 99.4
+            status=status,
+            is_synthetic=is_synthetic,
+            ocr_source=ocr_source,
         )
         await self.env_repo.create_reading(reading)
         await self.db.commit()
@@ -105,7 +125,9 @@ class EnvironmentService:
             "temperature": reading.temperature,
             "humidity": reading.humidity,
             "ocrConfidence": reading.ocr_confidence,
-            "status": reading.status
+            "status": reading.status,
+            "isSynthetic": reading.is_synthetic,   # ✅ Step 4c: exposed to frontend
+            "ocrSource": reading.ocr_source,
         })
 
         # Process alerts if not normal
@@ -215,7 +237,9 @@ class EnvironmentService:
             smoke_detected=smoke,
             fire_detected=fire,
             risk_level=risk,
-            image_path=f"media/environment/snapshot_room-001_manual_{int(now.timestamp())}.jpg"
+            image_path=image_saved_path,          # ✅ Fixed m-07: real annotated snapshot path
+            is_synthetic=is_synthetic,
+            ocr_source=ocr_source,
         )
         await self.env_repo.create_history(history)
         await self.db.commit()
@@ -234,7 +258,9 @@ class EnvironmentService:
                 "smokeDetected": h.smoke_detected,
                 "fireDetected": h.fire_detected,
                 "riskLevel": h.risk_level,
-                "imagePath": h.image_path
+                "imagePath": h.image_path,
+                "isSynthetic": h.is_synthetic,    # ✅ Step 4c: exposed to frontend
+                "ocrSource": h.ocr_source,
             } for h in all_history
         ])
 

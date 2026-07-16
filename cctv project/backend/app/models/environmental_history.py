@@ -43,6 +43,12 @@ class EnvironmentalHistory(Base):
         String(10), nullable=False, default="low"
     )  # low | medium | high
     image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_synthetic: Mapped[bool] = mapped_column(
+        nullable=False, default=False
+    )  # True when values are randomly generated (easyocr not available / fallback)
+    ocr_source: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # "rtsp" | "upload" | "synthetic" | "test"
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

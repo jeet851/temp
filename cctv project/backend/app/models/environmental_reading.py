@@ -40,6 +40,12 @@ class EnvironmentalReading(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="normal"
     )  # normal | warning | critical
+    is_synthetic: Mapped[bool] = mapped_column(
+        nullable=False, default=False
+    )  # True when values were randomly generated (fallback), False for real OCR reads
+    ocr_source: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # "rtsp" | "upload" | "synthetic" | "test" — matches OcrResult.source
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -36,6 +36,8 @@ class EnvironmentalReadingRead(EnvironmentalReadingBase):
 
     id: str
     timestamp: datetime
+    is_synthetic: bool = False   # True = randomly generated fallback, False = real OCR
+    ocr_source: str | None = None  # "rtsp" | "upload" | "synthetic" | "test"
     created_at: datetime
 
     @field_serializer('timestamp', 'created_at')
@@ -59,6 +61,8 @@ class EnvironmentalHistoryRead(BaseModel):
     fire_detected: bool
     risk_level: str  # low | medium | high
     image_path: str | None = None
+    is_synthetic: bool = False   # True = synthetic fallback, False = real OCR
+    ocr_source: str | None = None  # "rtsp" | "upload" | "synthetic" | "test"
     created_at: datetime
 
     @field_serializer('timestamp', 'created_at')
