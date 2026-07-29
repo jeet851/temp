@@ -10,12 +10,14 @@ export const settingsService = {
       return mockEngine.getThresholds();
     }
 
-    const res = await apiClient.get<{ data: { tempWarning: number; tempCritical: number; humWarning: number; humCritical: number } }>('/settings/thresholds');
+    const res = await apiClient.get<{ data: { tempWarning: number; tempCritical: number; humWarning: number; humCritical: number; ocrPollingIntervalSeconds: number; allowSyntheticFallback: boolean } }>('/settings/thresholds');
     return {
       tempWarning: res.data.tempWarning,
       tempCritical: res.data.tempCritical,
       humWarning: res.data.humWarning,
-      humCritical: res.data.humCritical
+      humCritical: res.data.humCritical,
+      ocrPollingIntervalSeconds: res.data.ocrPollingIntervalSeconds,
+      allowSyntheticFallback: res.data.allowSyntheticFallback
     };
   },
 
@@ -29,7 +31,9 @@ export const settingsService = {
       temp_warning: t.tempWarning,
       temp_critical: t.tempCritical,
       hum_warning: t.humWarning,
-      hum_critical: t.humCritical
+      hum_critical: t.humCritical,
+      ocr_polling_interval_seconds: t.ocrPollingIntervalSeconds,
+      allow_synthetic_fallback: t.allowSyntheticFallback
     });
   },
 

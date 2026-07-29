@@ -10,11 +10,13 @@ Routes:
 """
 
 import logging
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.dependencies import get_current_user
 from app.database.session import get_db
 from app.schemas.common import APIResponse
@@ -63,10 +65,11 @@ async def extract_from_upload(
         raise HTTPException(status_code=400, detail="Empty file uploaded.")
 
     try:
-        result = ocr_service.extract_from_image_bytes(
-            image_bytes=image_bytes,
-            room_id=room_id,
-            save_annotated=save_annotated,
+        result = await asyncio.to_thread(
+            ocr_service.extract_from_image_bytes,
+            image_bytes,
+            room_id,
+            save_annotated,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -75,7 +78,7 @@ async def extract_from_upload(
         raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
 
     logger.info(
-        "[OCR/extract] room=%s temp=%.1f hum=%.1f conf=%.1f%% time=%dms",
+        "[OCR/extract] room=%s temp=%s hum=%s conf=%s%% time=%dms",
         room_id, result.temperature, result.humidity, result.ocr_confidence, result.processing_ms,
     )
     return APIResponse(success=True, message="OCR extraction complete.", data=result)
@@ -96,6 +99,12 @@ async def trigger_capture(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    if payload.source == "test" and settings.app_env == "production":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Synthetic test captures are disabled in production environments.",
+        )
+
     """
     Trigger a full OCR pipeline run:
     - source='rtsp'  → grabs a live frame from the camera's configured RTSP URL
@@ -116,13 +125,19 @@ async def trigger_capture(
                     raise HTTPException(status_code=404, detail="No camera configured for this room.")
                 rtsp_url = cameras[0].rtsp_url
 
-            result = ocr_service.extract_from_rtsp(
-                rtsp_url=rtsp_url,
-                room_id=payload.room_id,
+            result = await asyncio.to_thread(
+                ocr_service.extract_from_rtsp,
+                rtsp_url,
+                payload.room_id,
             )
 
         elif payload.source == "test":
-            result = ocr_service.extract_from_synthetic(room_id=payload.room_id)
+            result = await asyncio.to_thread(
+                ocr_service.extract_from_synthetic,
+                24.5,  # default temp
+                58.2,  # default hum
+                payload.room_id,
+            )
 
         else:
             raise HTTPException(
@@ -138,25 +153,35 @@ async def trigger_capture(
         logger.exception("OCR capture failed.")
         raise HTTPException(status_code=500, detail=f"OCR capture failed: {str(e)}")
 
-    # Save to DB and broadcast via WebSocket
-    env_service = EnvironmentService(db)
-    history = await env_service.trigger_manual_capture(
-        room_id=payload.room_id,
-        temp=result.temperature,
-        hum=result.humidity,
-        ocr_confidence=result.ocr_confidence,       # ✅ M-01: real value
-        ocr_source=result.source,                   # ✅ m-07: source tracking
-        image_saved_path=result.image_saved_path,   # ✅ m-07: real snapshot path
-    )
-
-    logger.info(
-        "[OCR/capture] Saved history %s | room=%s temp=%.1f hum=%.1f conf=%.1f%%",
-        history.id, payload.room_id, result.temperature, result.humidity, result.ocr_confidence,
-    )
+    # Save to DB and broadcast via WebSocket only if we have valid readings
+    if result.temperature is not None and result.humidity is not None:
+        env_service = EnvironmentService(db)
+        # BUG FIX: Pass low_confidence=True when OCR status is PARTIAL (includes stagnation-
+        # detected readings). This surfaces in the Logs view with a warning badge so operators
+        # can distinguish implausible/stuck values from high-confidence OCR results.
+        is_low_confidence = result.ocr_status == "PARTIAL"
+        history = await env_service.trigger_manual_capture(
+            room_id=payload.room_id,
+            temp=result.temperature,
+            hum=result.humidity,
+            ocr_confidence=result.ocr_confidence,       # ✅ M-01: real value
+            ocr_source=result.source,                   # ✅ m-07: source tracking
+            image_saved_path=result.image_saved_path,   # ✅ m-07: real snapshot path
+            low_confidence=is_low_confidence,           # ✅ BUG FIX: stagnation flag
+        )
+        msg = f"OCR capture complete. Saved as history record {history.id}."
+        logger.info(
+            "[OCR/capture] Saved history %s | room=%s temp=%s hum=%s conf=%s%% low_conf=%s",
+            history.id, payload.room_id, result.temperature, result.humidity,
+            result.ocr_confidence, is_low_confidence,
+        )
+    else:
+        msg = f"OCR capture incomplete (status={result.ocr_status}). Skipping DB persist."
+        logger.warning("[OCR/capture] OCR failed or returned incomplete data. Skipping DB save.")
 
     return APIResponse(
-        success=True,
-        message=f"OCR capture complete. Saved as history record {history.id}.",
+        success=result.ocr_status != "FAILED",
+        message=msg,
         data=result,
     )
 
@@ -175,6 +200,12 @@ async def test_pipeline(
     hum: float = 58.2,
     current_user=Depends(get_current_user),
 ):
+    if settings.app_env == "production":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Synthetic test endpoints are disabled in production environments.",
+        )
+
     """
     Generate a synthetic CCTV frame (matching the frontend canvas layout),
     run the full OCR pipeline on it, and return the result.
@@ -183,11 +214,12 @@ async def test_pipeline(
     The `temp` and `hum` query params control what values are rendered in the test image.
     """
     try:
-        result = ocr_service.extract_from_synthetic(
-            temp=temp,
-            hum=hum,
-            room_id="ocr-test",
-            save_annotated=True,
+        result = await asyncio.to_thread(
+            ocr_service.extract_from_synthetic,
+            temp,
+            hum,
+            "ocr-test",
+            True,
         )
     except Exception as e:
         logger.exception("OCR test pipeline failed.")

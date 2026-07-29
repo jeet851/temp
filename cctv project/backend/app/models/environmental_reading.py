@@ -46,6 +46,9 @@ class EnvironmentalReading(Base):
     ocr_source: Mapped[str | None] = mapped_column(
         String(20), nullable=True
     )  # "rtsp" | "upload" | "synthetic" | "test" — matches OcrResult.source
+    low_confidence: Mapped[bool] = mapped_column(
+        nullable=False, default=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

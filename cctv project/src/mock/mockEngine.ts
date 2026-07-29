@@ -17,7 +17,9 @@ class MockEngine {
     tempWarning: 28.0,
     tempCritical: 32.0,
     humWarning: 65.0,
-    humCritical: 75.0
+    humCritical: 75.0,
+    ocrPollingIntervalSeconds: 30,
+    allowSyntheticFallback: false
   };
 
   private listeners: { [event: string]: Listener[] } = {};
@@ -59,7 +61,8 @@ class MockEngine {
       temperature,
       humidity,
       ocrConfidence,
-      status
+      status,
+      isSynthetic: false
     };
 
     this.readings.unshift(newReading);
@@ -148,7 +151,8 @@ class MockEngine {
       smokeDetected: smoke,
       fireDetected: fire,
       riskLevel: risk,
-      imagePath: `images/snapshot_room-001_auto_${Date.now()}.jpg`
+      imagePath: `images/snapshot_room-001_auto_${Date.now()}.jpg`,
+      isSynthetic: false
     };
 
     this.history.unshift(newHistory);
@@ -199,7 +203,8 @@ class MockEngine {
       temperature: temp,
       humidity: hum,
       ocrConfidence: 99.4,
-      status
+      status,
+      isSynthetic: false
     };
 
     this.readings.unshift(newReading);
@@ -229,7 +234,8 @@ class MockEngine {
       smokeDetected: smoke,
       fireDetected: fire,
       riskLevel: risk,
-      imagePath: `images/snapshot_room-001_manual_${Date.now()}.jpg`
+      imagePath: `images/snapshot_room-001_manual_${Date.now()}.jpg`,
+      isSynthetic: false
     };
 
     this.history.unshift(manualHistory);

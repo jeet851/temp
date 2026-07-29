@@ -13,14 +13,31 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import settings
 
-# Async engine — connection pool to PostgreSQL
-engine = create_async_engine(
-    settings.database_url,
-    echo=settings.debug,
-    pool_size=20,
-    max_overflow=10,
-    pool_pre_ping=True,
-)
+# Async engine initialization
+is_sqlite = settings.database_url.startswith("sqlite")
+engine_kwargs = {
+    "echo": settings.debug,
+}
+
+if not is_sqlite:
+    engine_kwargs.update({
+        "pool_size": 20,
+        "max_overflow": 10,
+        "pool_pre_ping": True,
+    })
+
+engine = create_async_engine(settings.database_url, **engine_kwargs)
+
+if is_sqlite:
+    from sqlalchemy import event
+    @event.listens_for(engine.sync_engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA cache_size=-64000")
+        cursor.close()
+
 
 # Session factory
 async_session_factory = async_sessionmaker(

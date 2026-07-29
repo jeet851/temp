@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field, field_serializer
+from pydantic.alias_generators import to_camel
 
 
 def _to_utc_z(v: datetime) -> str:
@@ -38,6 +39,7 @@ class EnvironmentalReadingRead(EnvironmentalReadingBase):
     timestamp: datetime
     is_synthetic: bool = False   # True = randomly generated fallback, False = real OCR
     ocr_source: str | None = None  # "rtsp" | "upload" | "synthetic" | "test"
+    low_confidence: bool = False
     created_at: datetime
 
     @field_serializer('timestamp', 'created_at')
@@ -63,6 +65,7 @@ class EnvironmentalHistoryRead(BaseModel):
     image_path: str | None = None
     is_synthetic: bool = False   # True = synthetic fallback, False = real OCR
     ocr_source: str | None = None  # "rtsp" | "upload" | "synthetic" | "test"
+    low_confidence: bool = False
     created_at: datetime
 
     @field_serializer('timestamp', 'created_at')
@@ -75,7 +78,14 @@ class EnvironmentalHistoryRead(BaseModel):
 
 class ManualCaptureRequest(BaseModel):
     """Payload to manually trigger a snapshot record entry."""
+    model_config = {
+        "alias_generator": to_camel,
+        "populate_by_name": True,
+    }
 
     room_id: str
     temperature: float
     humidity: float
+    ocr_confidence: float | None = None
+    ocr_source: str | None = None
+    image_saved_path: str | None = None

@@ -38,7 +38,7 @@ async def get_history(
     risk_level: str | None = Query(None, description="low | medium | high"),
     search_query: str | None = Query(None, description="Keyword search across temp, hum, risk"),
     page: int = Query(1, ge=1),
-    per_page: int = Query(10, ge=1, le=1000),
+    per_page: int = Query(10, ge=1, le=5000),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -72,8 +72,8 @@ async def manual_capture(
         room_id=payload.room_id,
         temp=payload.temperature,
         hum=payload.humidity,
-        ocr_confidence=0.0,         # Manual API payload — no real OCR confidence
-        ocr_source="synthetic",     # Not from a camera pipeline
-        image_saved_path=None,
+        ocr_confidence=payload.ocr_confidence if payload.ocr_confidence is not None else 0.0,
+        ocr_source=payload.ocr_source if payload.ocr_source is not None else "live",
+        image_saved_path=payload.image_saved_path,
     )
     return APIResponse(success=True, message="Manual capture logged.", data=EnvironmentalHistoryRead.from_orm(record))

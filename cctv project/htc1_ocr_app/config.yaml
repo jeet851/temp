@@ -1,0 +1,86 @@
+# =====================================================================
+# HTC-1 LCD Digital Display OCR Reader — Application Configuration
+# =====================================================================
+
+input:
+  # Source type: "rtsp", "webcam", "file"
+  type: "file"
+  # RTSP URL or recorded video / image file path
+  source: "media/test_stream.mp4"
+  # Optional authentication credentials for RTSP
+  username: "admin"
+  password: ""
+  # Processing FPS cap (0 for unthrottled)
+  fps_limit: 15
+
+roi:
+  # Fixed ROI bounding box in format [x, y, width, height]
+  bounding_box: [180, 140, 280, 200]
+  # Optional 4-point perspective warp corners [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+  # Leave empty [] to skip perspective warping
+  perspective_corners: []
+  
+tracking:
+  # Enable dynamic ROI re-locking for camera vibration / PTZ drift
+  enabled: true
+  # Method: "template" or "aruco"
+  method: "template"
+  # Template match threshold (0.0 to 1.0)
+  match_threshold: 0.65
+  # ArUco marker ID (if method is "aruco")
+  aruco_marker_id: 0
+
+preprocessing:
+  # Upscaling factor (e.g. 2, 3, 4)
+  scale_factor: 3
+  # Super-resolution method: "edsr", "espcn", "fsrcnn", or "lanczos" (fallback)
+  super_res_model: "espcn"
+  # Path to OpenCV DNN super-resolution model binary (optional)
+  super_res_model_path: ""
+  # CLAHE (Contrast Limited Adaptive Histogram Equalization) settings
+  clahe_clip_limit: 3.0
+  clahe_grid_size: [8, 8]
+  # Binarization: "adaptive_gaussian", "otsu", or "simple"
+  binarization_method: "otsu"
+  adaptive_block_size: 11
+  adaptive_c: 2
+  # Morphological closing kernel size to reconnect broken 7-segment lines
+  morph_kernel_size: 2
+
+ocr:
+  # Swappable OCR engine backend: "7segment", "easyocr", or "tesseract"
+  engine: "7segment"
+  # Character confidence threshold (0.0 to 1.0)
+  min_confidence: 0.50
+  # Dual-zone HTC-1 split percentages [top_pct, bottom_pct] of ROI height
+  temp_zone_pct: [5, 55]
+  hum_zone_pct: [45, 95]
+
+temporal_filter:
+  # Size of rolling buffer window
+  buffer_size: 7
+  # Filtering mode: "mode" (most frequent), "median", or "ema"
+  filter_method: "mode"
+  # Max standard deviation limit for outlier rejection
+  max_std_threshold: 3.0
+
+output:
+  # Display live video overlay window
+  show_overlay: true
+  # Save output video stream with reading overlay
+  save_video: false
+  output_video_path: "output_overlay.mp4"
+  # CSV file logging
+  log_to_csv: true
+  csv_filepath: "readings_log.csv"
+  # Database logging (SQLite or PostgreSQL URI)
+  log_to_db: true
+  db_url: "sqlite:///lcd_readings.db"
+  # HTTP Webhook dispatch
+  log_to_http: false
+  http_url: "http://localhost:8000/api/v1/telemetry"
+  # MQTT broker dispatch
+  log_to_mqtt: false
+  mqtt_broker: "localhost"
+  mqtt_port: 1883
+  mqtt_topic: "visionguard/sensors/htc1"

@@ -18,7 +18,8 @@ export const generateInitialReadings = (): EnvironmentalReading[] => {
       temperature: temp,
       humidity: hum,
       ocrConfidence: parseFloat((96.0 + Math.random() * 3.5).toFixed(1)),
-      status: 'normal'
+      status: 'normal',
+      isSynthetic: false
     });
   }
   return readings;
@@ -62,7 +63,8 @@ export const generateInitialHistory = (): EnvironmentalHistory[] => {
       smokeDetected: smoke,
       fireDetected: fire,
       riskLevel: risk,
-      imagePath: `images/snapshot_room-001_hour_${24 - i}.jpg`
+      imagePath: `images/snapshot_room-001_hour_${24 - i}.jpg`,
+      isSynthetic: false
     });
   }
 

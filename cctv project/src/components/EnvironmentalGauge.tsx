@@ -9,6 +9,7 @@ interface EnvironmentalGaugeProps {
   min: number;
   max: number;
   unit: string;
+  lowConfidence?: boolean;
 }
 
 export const EnvironmentalGauge: React.FC<EnvironmentalGaugeProps> = ({
@@ -18,7 +19,8 @@ export const EnvironmentalGauge: React.FC<EnvironmentalGaugeProps> = ({
   status,
   min,
   max,
-  unit
+  unit,
+  lowConfidence
 }) => {
   // SVG Circle calculations
   const radius = 64;
@@ -73,6 +75,24 @@ export const EnvironmentalGauge: React.FC<EnvironmentalGaugeProps> = ({
       }}>
         {title}
       </span>
+
+      {lowConfidence && (
+        <span style={{
+          position: 'absolute',
+          top: 10,
+          right: 10,
+          background: 'rgba(245, 158, 11, 0.1)',
+          border: '1px solid var(--color-warning)',
+          color: 'var(--color-warning)',
+          fontSize: '0.65rem',
+          fontWeight: 700,
+          padding: '2px 6px',
+          borderRadius: 4,
+          textTransform: 'uppercase'
+        }}>
+          ⚠ Low Conf
+        </span>
+      )}
 
       {/* Gauge SVG Container */}
       <div style={{ position: 'relative', width: 160, height: 160 }}>

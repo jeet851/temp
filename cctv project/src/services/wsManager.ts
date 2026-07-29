@@ -1,4 +1,5 @@
 import { toCamel } from '../utils/case';
+import { getWsUrl } from '../config';
 
 type WSCallback = (data: any) => void;
 
@@ -13,7 +14,7 @@ class WebSocketManager {
     this.isConnecting = true;
 
     try {
-      this.socket = new WebSocket('ws://localhost:8000/api/v1/ws');
+      this.socket = new WebSocket(getWsUrl());
 
       this.socket.onopen = () => {
         this.isConnecting = false;

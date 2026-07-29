@@ -18,7 +18,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 export const Alerts: React.FC = () => {
   const { rooms, cameras } = useOutletContext<LayoutContextType>();
 
-  const [filterType, setFilterType] = useState<'all' | 'temperature' | 'humidity'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'temperature' | 'humidity' | 'camera_offline'>('all');
   const [filterSeverity, setFilterSeverity] = useState<'all' | 'warning' | 'critical'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'acknowledged'>('all');
   
@@ -185,6 +185,7 @@ export const Alerts: React.FC = () => {
             <option value="all">All Metrics</option>
             <option value="temperature">Temperature Alerts</option>
             <option value="humidity">Humidity Alerts</option>
+            <option value="camera_offline">Camera Offline Alerts</option>
           </select>
 
           <select 
@@ -235,7 +236,7 @@ export const Alerts: React.FC = () => {
                 const dateObj = new Date(alert.timestamp);
                 const room = rooms.find(r => r.id === alert.roomId);
                 const cam = cameras.find(c => c.id === alert.cameraId);
-                const unit = alert.type === 'temperature' ? '°C' : '%RH';
+                const unit = alert.type === 'temperature' ? '°C' : alert.type === 'humidity' ? '%RH' : '';
 
                 return (
                   <tr 
@@ -251,11 +252,11 @@ export const Alerts: React.FC = () => {
                     </td>
                     <td style={{ fontWeight: 500 }}>{room?.name || alert.roomId}</td>
                     <td style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{cam?.name || alert.cameraId}</td>
-                    <td style={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.8rem' }}>{alert.type}</td>
+                    <td style={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.8rem' }}>{alert.type === 'camera_offline' ? 'camera offline' : alert.type}</td>
                     <td style={{ fontWeight: 700, color: alert.severity === 'critical' ? 'var(--color-critical)' : 'var(--color-warning)' }}>
-                      {alert.value.toFixed(1)} {unit}
+                      {alert.type === 'camera_offline' ? 'OFFLINE' : `${alert.value.toFixed(1)} ${unit}`}
                     </td>
-                    <td>{alert.threshold} {unit}</td>
+                    <td>{alert.type === 'camera_offline' ? '—' : `${alert.threshold} ${unit}`}</td>
                     <td>
                       <span className={`status-badge ${alert.severity}`}>
                         {alert.severity}
@@ -366,9 +367,12 @@ export const Alerts: React.FC = () => {
                   </div>
 
                   <div className="flex-row-center">
-                    <span style={{ color: 'var(--color-text-muted)' }}>Threshold Exceeded</span>
-                    <span style={{ fontWeight: 600, color: 'var(--color-critical)' }}>
-                      {selectedAlert.value} {selectedAlert.type === 'temperature' ? '°C' : '%RH'} (Threshold: {selectedAlert.threshold} {selectedAlert.type === 'temperature' ? '°C' : '%RH'})
+                    <span style={{ color: 'var(--color-text-muted)' }}>Alarm Details</span>
+                    <span style={{ fontWeight: 600, color: 'var(--color-critical)', textAlign: 'right' }}>
+                      {selectedAlert.type === 'camera_offline' 
+                        ? 'Camera RTSP connection offline' 
+                        : `${selectedAlert.value} ${selectedAlert.type === 'temperature' ? '°C' : '%RH'} (Threshold: ${selectedAlert.threshold} ${selectedAlert.type === 'temperature' ? '°C' : '%RH'})`
+                      }
                     </span>
                   </div>
                 </div>

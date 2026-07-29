@@ -1,6 +1,6 @@
 import { environmentService } from './environmentService';
 import { alertService } from './alertService';
-import { USE_MOCK } from '../config';
+import { USE_MOCK, getApiBaseUrl } from '../config';
 import type { ReportSummary } from '../types';
 
 export const reportService = {
@@ -110,7 +110,8 @@ export const reportService = {
     const path = `/exports/history?room_id=${roomId}&format=${formatParam}`;
     
     const token = localStorage.getItem('vg_session_token');
-    const response = await fetch(`http://localhost:8000/api/v1${path}`, {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetch(`${baseUrl}${path}`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }

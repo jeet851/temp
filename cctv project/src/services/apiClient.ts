@@ -1,7 +1,5 @@
 import { toCamel, toSnake } from '../utils/case';
-
-const BASE_URL = 'http://localhost:8000/api/v1';
-
+import { getApiBaseUrl } from '../config';
 
 export const apiClient = {
   getHeaders() {
@@ -16,7 +14,8 @@ export const apiClient = {
   },
 
   async request<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const url = `${BASE_URL}${path}`;
+    const baseUrl = getApiBaseUrl();
+    const url = `${baseUrl}${path}`;
     const isMultipart = options.body instanceof FormData;
     const headers = {
       ...this.getHeaders(),
@@ -37,7 +36,7 @@ export const apiClient = {
         localStorage.removeItem('vg_session_token');
         window.dispatchEvent(new Event('vg_logout'));
         if (window.location.hash !== '#/login') {
-          window.location.hash = '/login';
+          window.location.hash = '#/login';
         }
       }
       const errData = await response.json().catch(() => ({}));

@@ -47,7 +47,7 @@ export const authService = {
       localStorage.removeItem('vg_session_token');
       localStorage.removeItem('vg_user');
       window.dispatchEvent(new Event('vg_logout'));
-      window.location.hash = '/login';
+      window.location.hash = '#/login';
       return;
     }
 
@@ -58,7 +58,7 @@ export const authService = {
     } finally {
       localStorage.removeItem('vg_session_token');
       window.dispatchEvent(new Event('vg_logout'));
-      window.location.hash = '/login';
+      window.location.hash = '#/login';
     }
   },
 

@@ -23,7 +23,9 @@ export const Settings: React.FC = () => {
   const activeCamera = cameras.find(c => c.roomId === selectedRoom.id) || cameras[0];
   const [cameraName, setCameraName] = useState(activeCamera?.name || '');
   const [rtspUrl, setRtspUrl] = useState(activeCamera?.rtspUrl || '');
-  const [ocrInterval, setOcrInterval] = useState(5); // seconds
+  const [ocrInterval, setOcrInterval] = useState(thresholds.ocrPollingIntervalSeconds || 300); // seconds
+  const [allowSynthetic, setAllowSynthetic] = useState(thresholds.allowSyntheticFallback || false);
+  const [deviceTimeOffset, setDeviceTimeOffset] = useState(thresholds.deviceTimeOffsetMinutes ?? -1);
   
   const [tempWarn, setTempWarn] = useState(thresholds.tempWarning);
   const [tempCrit, setTempCrit] = useState(thresholds.tempCritical);
@@ -50,7 +52,10 @@ export const Settings: React.FC = () => {
       tempWarning: Number(tempWarn),
       tempCritical: Number(tempCrit),
       humWarning: Number(humWarn),
-      humCritical: Number(humCrit)
+      humCritical: Number(humCrit),
+      ocrPollingIntervalSeconds: Number(ocrInterval),
+      allowSyntheticFallback: allowSynthetic,
+      deviceTimeOffsetMinutes: Number(deviceTimeOffset)
     });
 
     setSaveSuccess(true);
@@ -154,6 +159,18 @@ export const Settings: React.FC = () => {
                   <option>GMT+00:00 (Coordinated Universal Time)</option>
                 </select>
               </div>
+
+              <div className="form-group">
+                <label className="form-label">Device Time Calibration Offset (Minutes)</label>
+                <input 
+                  type="number" 
+                  className="form-input" 
+                  value={deviceTimeOffset}
+                  onChange={(e) => setDeviceTimeOffset(Number(e.target.value))}
+                  placeholder="-1"
+                />
+                <span className="form-help">Sync website HUD and overlay clocks with physical camera/meter clock (-1 min offset default).</span>
+              </div>
             </div>
           )}
 
@@ -192,8 +209,8 @@ export const Settings: React.FC = () => {
                   className="form-input" 
                   value={ocrInterval}
                   onChange={(e) => setOcrInterval(Number(e.target.value))}
-                  min={2}
-                  max={60}
+                  min={10}
+                  max={86400}
                 />
               </div>
             </div>
@@ -251,6 +268,36 @@ export const Settings: React.FC = () => {
                     onChange={(e) => setHumCrit(Number(e.target.value))}
                   />
                 </div>
+              </div>
+
+              <div style={{
+                marginTop: 8,
+                padding: '12px 16px',
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12
+              }}>
+                <input
+                  type="checkbox"
+                  id="allowSynthetic"
+                  checked={allowSynthetic}
+                  onChange={(e) => setAllowSynthetic(e.target.checked)}
+                  style={{
+                    width: 18,
+                    height: 18,
+                    cursor: 'pointer',
+                    accentColor: '#10B981'
+                  }}
+                />
+                <label htmlFor="allowSynthetic" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>Allow Synthetic Fallback Reading</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                    If cameras go offline, invent mock telemetry to maintain dashboard activity rather than dropping capture cycles.
+                  </span>
+                </label>
               </div>
             </div>
           )}

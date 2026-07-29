@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from '../components/Sidebar';
 import { Navbar } from '../components/Navbar';
+import { LiveMonitor } from '../pages/LiveMonitor';
 import { environmentService } from '../services/environmentService';
 import { alertService } from '../services/alertService';
 import { cameraService } from '../services/cameraService';
@@ -22,12 +23,15 @@ interface Toast {
 }
 
 export const DashboardLayout: React.FC = () => {
+  const location = useLocation();
+  const isLiveRoute = location.pathname === '/live';
+
   // Root layout states
   const defaultRoom: Room = { id: 'room-001', name: 'Server Room Alpha', location: 'Building A, Floor 2, Zone C', status: 'normal' };
   const [rooms, setRooms] = useState<Room[]>([]);
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [thresholds, setThresholds] = useState<Threshold>({ tempWarning: 28, tempCritical: 32, humWarning: 65, humCritical: 75 });
+  const [thresholds, setThresholds] = useState<Threshold>({ tempWarning: 28, tempCritical: 32, humWarning: 65, humCritical: 75, ocrPollingIntervalSeconds: 30, allowSyntheticFallback: false });
   const [selectedRoom, setSelectedRoom] = useState<Room>(defaultRoom);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -92,6 +96,11 @@ export const DashboardLayout: React.FC = () => {
       setThresholds(updatedThresholds);
     });
 
+    // Listen to camera status changes
+    const unsubscribeCameraStatus = cameraService.subscribeToCameraStatus((updatedCam) => {
+      setCameras(prev => prev.map(c => c.id === updatedCam.id ? { ...c, ...updatedCam } : c));
+    });
+
     // Listen to new alert dispatches to spawn floating toasts
     const unsubscribeDispatch = alertService.subscribeToAlertDispatch(({ alert, roomName }) => {
       const toastId = `toast-${Date.now()}`;
@@ -107,6 +116,7 @@ export const DashboardLayout: React.FC = () => {
       unsubscribeRooms();
       unsubscribeAlerts();
       unsubscribeThresholds();
+      unsubscribeCameraStatus();
       unsubscribeDispatch();
     };
   }, [selectedRoom.id]);
@@ -147,6 +157,7 @@ export const DashboardLayout: React.FC = () => {
         display: 'flex',
         flexDirection: 'column',
         flexGrow: 1,
+        marginLeft: 'var(--sidebar-width)',
         width: 'calc(100% - var(--sidebar-width))',
         minHeight: '100vh'
       }}>
@@ -158,9 +169,39 @@ export const DashboardLayout: React.FC = () => {
 
         {/* Content Outlet Frame */}
         <main className="main-content">
-          <Outlet context={contextValue} />
+          <div style={{ display: isLiveRoute ? 'block' : 'none', height: '100%' }}>
+            <LiveMonitor contextOverride={contextValue} />
+          </div>
+          {!isLiveRoute && (
+            <React.Suspense fallback={
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '400px',
+                height: '100%',
+                gap: '16px',
+                color: '#38bdf8',
+                fontFamily: 'monospace'
+              }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  border: '3px solid rgba(56, 189, 248, 0.2)',
+                  borderTopColor: '#38bdf8',
+                  borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite'
+                }} />
+                <span style={{ fontSize: '0.85rem', letterSpacing: '0.05em' }}>Loading view...</span>
+              </div>
+            }>
+              <Outlet context={contextValue} />
+            </React.Suspense>
+          )}
         </main>
       </div>
+
 
       {/* Floating Notifications Toasts Panel */}
       <div style={{

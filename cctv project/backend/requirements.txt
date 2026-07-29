@@ -56,7 +56,7 @@ aiosqlite==0.21.0
 easyocr>=1.7.2                     # Deep-learning OCR; no system Tesseract required
 
 # --- Computer Vision / Image Processing ---
-opencv-python-headless>=4.8.0     # Frame capture from RTSP + image preprocessing
+opencv-python>=4.8.0              # Frame capture from RTSP + image preprocessing
 Pillow>=10.0.0                    # Image loading, format conversion
 numpy>=2.0.0                      # Python 3.13 requires numpy>=2.0 (pre-built wheels)
 

@@ -69,13 +69,32 @@ class Settings(BaseSettings):
     ocr_confidence_threshold: float = 0.55
 
     # How often the scheduler triggers an OCR capture (seconds)
-    ocr_capture_interval: int = 30
+    ocr_capture_interval: int = 300
+
+    # Single LCD bounding box for HTC-1 meter — "x,y,width,height" in pixels
+    ocr_lcd_roi: str = "130,130,100,90"
 
     # LCD ROI for temperature digits — "x,y,width,height" in pixels
-    ocr_temp_roi: str = "43,58,110,48"
+    ocr_temp_roi: str = "130,130,100,42"
 
     # LCD ROI for humidity digits — "x,y,width,height" in pixels
-    ocr_hum_roi: str = "175,58,115,48"
+    ocr_hum_roi: str = "178,175,52,42"
+
+    # Dual-zone LCD detection settings
+    # Temperature zone: top/bottom as % of detected LCD height (Upper band: 0% to 44%)
+    ocr_temp_zone_pct: str = "0,44"
+    # Humidity zone: top/bottom as % of detected LCD height (Lower band: 65% to 100%)
+    ocr_hum_zone_pct: str = "65,100"
+    # Multi-frame smoothing window size (0 to disable)
+    ocr_smoothing_window: int = 5
+    # LCD detection mode: "contour" (auto-detect) or "fixed" (use pixel ROI)
+    ocr_lcd_detect_mode: str = "contour"
+
+    @property
+    def ocr_lcd_roi_tuple(self) -> tuple[int, int, int, int]:
+        """Parse single LCD meter ROI string into (x, y, w, h) integers."""
+        x, y, w, h = (int(v.strip()) for v in self.ocr_lcd_roi.split(","))
+        return x, y, w, h
 
     @property
     def ocr_temp_roi_tuple(self) -> tuple[int, int, int, int]:
@@ -88,6 +107,18 @@ class Settings(BaseSettings):
         """Parse humidity ROI string into (x, y, w, h) integers."""
         x, y, w, h = (int(v.strip()) for v in self.ocr_hum_roi.split(","))
         return x, y, w, h
+
+    @property
+    def ocr_temp_zone_tuple(self) -> tuple[int, int]:
+        """Parse temperature zone percentages into (top%, bottom%)."""
+        t, b = (int(v.strip()) for v in self.ocr_temp_zone_pct.split(","))
+        return t, b
+
+    @property
+    def ocr_hum_zone_tuple(self) -> tuple[int, int]:
+        """Parse humidity zone percentages into (top%, bottom%)."""
+        t, b = (int(v.strip()) for v in self.ocr_hum_zone_pct.split(","))
+        return t, b
 
     @property
     def ocr_language_list(self) -> list[str]:

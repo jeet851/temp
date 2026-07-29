@@ -22,10 +22,10 @@ class DashboardService:
         latest_reading = await self.env_repo.get_latest_reading(room_id)
         
         # Fallback values if no reading yet
-        temp = latest_reading.temperature if latest_reading else 22.5
-        hum = latest_reading.humidity if latest_reading else 48.0
+        temp = latest_reading.temperature if latest_reading else None
+        hum = latest_reading.humidity if latest_reading else None
         status = latest_reading.status if latest_reading else "normal"
-        conf = latest_reading.ocr_confidence if latest_reading else 98.2
+        conf = latest_reading.ocr_confidence if latest_reading else None
 
         # Room details
         room = await self.room_repo.get_by_id(room_id)

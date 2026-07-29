@@ -13,21 +13,27 @@ from pydantic import BaseModel, Field
 class OcrDigitResult(BaseModel):
     """Parsed result for a single LCD digit field (temp or humidity)."""
     raw_text: str = Field(..., description="Raw OCR-extracted string before parsing")
-    value: float = Field(..., description="Parsed numeric value")
+    value: Optional[float] = Field(None, description="Parsed numeric value")
     confidence: float = Field(..., description="EasyOCR average confidence score (0.0–1.0)")
     roi: list[int] = Field(..., description="[x, y, width, height] ROI used for extraction")
 
 
 class OcrResult(BaseModel):
     """Full OCR extraction result from a single camera frame."""
-    temperature: float = Field(..., description="Extracted temperature (°C)")
-    humidity: float = Field(..., description="Extracted relative humidity (%RH)")
+    temperature: Optional[float] = Field(None, description="Extracted temperature (°C) or null if OCR failed")
+    humidity: Optional[float] = Field(None, description="Extracted relative humidity (%RH) or null if OCR failed")
     ocr_confidence: float = Field(..., description="Overall OCR confidence % (0–100)")
-    temp_detail: OcrDigitResult
-    hum_detail: OcrDigitResult
+    temp_detail: Optional[OcrDigitResult] = None
+    hum_detail: Optional[OcrDigitResult] = None
     source: str = Field(..., description="Frame source: upload | rtsp | test | synthetic")
     processing_ms: int = Field(..., description="Total OCR processing time in milliseconds")
     image_saved_path: Optional[str] = Field(None, description="Path to saved annotated frame image")
+    device_type: str = Field("HTC-1", description="Detected or assumed device type")
+    ocr_status: str = Field("SUCCESS", description="OCR status: SUCCESS | PARTIAL | FAILED")
+    lcd_region: Optional[list[int]] = Field(None, description="[x, y, w, h] of detected LCD bounding box")
+    lcd_detect_confidence: Optional[str] = Field("high", description="LCD detect confidence: high | low")
+    temp_roi_image_path: Optional[str] = Field(None, description="Path to cropped temperature ROI image")
+    hum_roi_image_path: Optional[str] = Field(None, description="Path to cropped humidity ROI image")
 
     model_config = {"from_attributes": True}
 
@@ -50,7 +56,9 @@ class OcrConfigUpdate(BaseModel):
     ocr_engine: Optional[str] = Field(None, description="OCR engine: easyocr | tesseract")
     ocr_confidence_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
     ocr_gpu: Optional[bool] = None
+    lcd_detect_mode: Optional[str] = Field(None, description="LCD detection mode: contour | fixed")
     # ROI as [x, y, width, height] pixel coordinates
+    lcd_roi: Optional[list[int]] = Field(None, min_length=4, max_length=4)
     temp_roi: Optional[list[int]] = Field(None, min_length=4, max_length=4)
     hum_roi: Optional[list[int]] = Field(None, min_length=4, max_length=4)
 
@@ -62,5 +70,7 @@ class OcrConfigResponse(BaseModel):
     ocr_gpu: bool
     ocr_confidence_threshold: float
     ocr_capture_interval: int
+    lcd_detect_mode: str
+    lcd_roi: Optional[list[int]] = None
     temp_roi: list[int]
     hum_roi: list[int]

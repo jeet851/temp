@@ -8,8 +8,7 @@ role-based access control support.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, DateTime, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, DateTime, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -21,10 +20,9 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        Uuid(),
         primary_key=True,
         default=uuid.uuid4,
-        server_default=text("gen_random_uuid()"),
     )
     full_name: Mapped[str] = mapped_column(String(120), nullable=False)
     username: Mapped[str] = mapped_column(String(60), unique=True, nullable=False)

@@ -26,6 +26,9 @@ class Camera(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="online"
     )  # online | offline
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     fps: Mapped[float] = mapped_column(Float, nullable=False, default=15.0)
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=120)
     ocr_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=96.0)

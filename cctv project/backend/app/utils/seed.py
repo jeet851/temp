@@ -27,6 +27,7 @@ from app.models import (
     Room,
     Camera,
     SystemConfig,
+    EnvironmentalReading,
     EnvironmentalHistory,
 )
 from app.utils.helpers import generate_id
@@ -71,7 +72,7 @@ async def seed_database() -> None:
             id="camera-001",
             name="Alpha CCTV-1",
             room_id="room-001",
-            rtsp_url="rtsp://admin:admin@123@10.215.75.210/live",
+            rtsp_url="rtsp://admin:admin@123@10.215.75.201/live",
             status="online",
             fps=15.0,
             latency_ms=120,
@@ -86,52 +87,14 @@ async def seed_database() -> None:
             temp_critical=32.0,
             hum_warning=65.0,
             hum_critical=75.0,
-            capture_interval=3600,
+            capture_interval=300,
+            ocr_polling_interval_seconds=300,
+            allow_synthetic_fallback=True,
             retention_days=90,
             system_version="2.0.0",
         )
         db.add(config)
-        print("  -> System config created with default thresholds")
-
-        # --- Environmental History (24 hours of simulated data) ---
-        now = datetime.now(timezone.utc)
-        history_records = []
-        for i in range(24, -1, -1):
-            ts = now - timedelta(hours=i)
-            hour = ts.hour
-
-            # Daily temperature wave: cooler at night, warmer during day
-            cycle = math.sin((hour - 6) * (math.pi / 12))
-            temp = round(22.0 + cycle * 2.0 + random.uniform(-0.4, 0.4), 1)
-            hum = round(44.0 + cycle * 5.0 + random.uniform(-1.0, 1.0), 1)
-
-            smoke = False
-            fire = False
-            risk = "low"
-            if temp >= 32.0 or hum >= 75.0:
-                smoke = random.random() > 0.4
-                fire = random.random() > 0.6
-                risk = "high"
-            elif temp >= 28.0 or hum >= 65.0:
-                smoke = random.random() > 0.7
-                risk = "medium"
-
-            record = EnvironmentalHistory(
-                id=generate_id("h"),
-                timestamp=ts,
-                room_id="room-001",
-                camera_id="camera-001",
-                temperature=temp,
-                humidity=hum,
-                smoke_detected=smoke,
-                fire_detected=fire,
-                risk_level=risk,
-                image_path=f"media/environment/snapshot_room-001_hour_{24 - i}.jpg",
-            )
-            history_records.append(record)
-
-        db.add_all(history_records)
-        print(f"  -> {len(history_records)} environmental history records created")
+        print("  -> System config created with default thresholds (5-min capture interval)")
 
         await db.commit()
         print("Database seeding complete!")

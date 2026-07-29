@@ -22,7 +22,9 @@ class SettingsRepository:
                 temp_critical=32.0,
                 hum_warning=65.0,
                 hum_critical=75.0,
-                capture_interval=3600,
+                capture_interval=300,
+                ocr_polling_interval_seconds=300,
+                allow_synthetic_fallback=True,
                 retention_days=90,
                 system_version="2.0.0",
             )

@@ -14,6 +14,7 @@ export interface Camera {
   fps: number;
   latencyMs: number;
   ocrConfidence: number;
+  lastSeenAt: string | null;
 }
 
 export interface EnvironmentalReading {
@@ -27,6 +28,7 @@ export interface EnvironmentalReading {
   status: 'normal' | 'warning' | 'critical';
   isSynthetic: boolean;   // true = random fallback, false = real OCR read
   ocrSource?: string;     // 'rtsp' | 'upload' | 'synthetic' | 'test'
+  lowConfidence?: boolean;
 }
 
 export interface Alert {
@@ -34,11 +36,11 @@ export interface Alert {
   timestamp: string;
   roomId: string;
   cameraId: string;
-  type: 'temperature' | 'humidity';
+  type: 'temperature' | 'humidity' | 'camera_offline';
   value: number;
   threshold: number;
   severity: 'warning' | 'critical';
-  status: 'active' | 'acknowledged';
+  status: 'active' | 'acknowledged' | 'resolved';
   imageUrl: string;
   acknowledgedBy?: string;
   acknowledgedAt?: string;
@@ -57,6 +59,7 @@ export interface EnvironmentalHistory {
   imagePath: string;
   isSynthetic: boolean;   // true = synthetic fallback, false = real OCR
   ocrSource?: string;     // 'rtsp' | 'upload' | 'synthetic' | 'test'
+  lowConfidence?: boolean;
 }
 
 export interface Threshold {
@@ -64,6 +67,9 @@ export interface Threshold {
   tempCritical: number;
   humWarning: number;
   humCritical: number;
+  ocrPollingIntervalSeconds: number;
+  allowSyntheticFallback: boolean;
+  deviceTimeOffsetMinutes?: number;
 }
 
 export interface Notification {
@@ -107,12 +113,18 @@ export interface OcrDigitResult {
 }
 
 export interface OcrResult {
-  temperature: number;
-  humidity: number;
+  temperature: number | null;
+  humidity: number | null;
   ocrConfidence: number;
-  tempDetail: OcrDigitResult;
-  humDetail: OcrDigitResult;
+  tempDetail: OcrDigitResult | null;
+  humDetail: OcrDigitResult | null;
   source: string;
   processingMs: number;
   imageSavedPath?: string;
+  deviceType?: string;
+  ocrStatus?: string;
+  lcdRegion?: number[];
+  lcdDetectConfidence?: 'high' | 'low';
+  tempRoiImagePath?: string;
+  humRoiImagePath?: string;
 }

@@ -26,7 +26,7 @@ export const Logs: React.FC = () => {
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState<number>(25);
 
   // Local History records list
   const [history, setHistory] = useState<EnvironmentalHistory[]>([]);
@@ -35,11 +35,31 @@ export const Logs: React.FC = () => {
   const [selectedRecord, setSelectedRecord] = useState<EnvironmentalHistory | null>(null);
   const modalCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Fetch initial history logs
+  // Quick Date Presets
+  const setLast7Days = () => {
+    const today = new Date();
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(today.getDate() - 7);
+    setStartDate(sevenDaysAgo.toISOString().split('T')[0]);
+    setEndDate(today.toISOString().split('T')[0]);
+  };
+
+  const setToday = () => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    setStartDate(todayStr);
+    setEndDate(todayStr);
+  };
+
+  const clearDateRange = () => {
+    setStartDate('');
+    setEndDate('');
+  };
+
+  // Fetch initial history logs (up to 3,000 records to support >1 week of 5-min snapshots)
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const res = await environmentService.getHistory(selectedRoom.id, 'all', '', '', '', 1, 1000);
+        const res = await environmentService.getHistory(selectedRoom.id, 'all', '', '', '', 1, 3000);
         setHistory(res.data);
       } catch (err) {
         console.error('Failed to fetch history logs:', err);
@@ -67,9 +87,9 @@ export const Logs: React.FC = () => {
     
     if (searchTerm) {
       const formattedDate = new Date(record.timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }).toLowerCase();
-      const tempStr = record.temperature.toString();
-      const humStr = record.humidity.toString();
-      const riskStr = record.riskLevel.toLowerCase();
+      const tempStr = record.temperature !== null && record.temperature !== undefined ? record.temperature.toString() : '';
+      const humStr = record.humidity !== null && record.humidity !== undefined ? record.humidity.toString() : '';
+      const riskStr = record.riskLevel?.toLowerCase() || '';
       if (!formattedDate.includes(searchTerm.toLowerCase()) && 
           !tempStr.includes(searchTerm) && 
           !humStr.includes(searchTerm) &&
@@ -142,18 +162,20 @@ export const Logs: React.FC = () => {
     ctx.strokeRect(sX, sY, sW, sH);
 
     // Temperature LCD
-    ctx.fillStyle = selectedRecord.temperature >= 28 ? '#fbbf24' : '#10b981';
+    const tVal = selectedRecord.temperature !== null && selectedRecord.temperature !== undefined ? selectedRecord.temperature : 0.0;
+    ctx.fillStyle = tVal >= 28 ? '#fbbf24' : '#10b981';
     ctx.font = '700 24px "JetBrains Mono", monospace';
-    ctx.fillText(`${selectedRecord.temperature.toFixed(1)}°C`, sX + 20, sY + 50);
+    ctx.fillText(`${tVal.toFixed(1)}°C`, sX + 20, sY + 50);
 
     ctx.fillStyle = '#4b5563';
     ctx.font = '700 9px "Outfit", sans-serif';
     ctx.fillText('TEMP SENSOR', sX + 20, sY + 68);
 
     // Humidity LCD
-    ctx.fillStyle = selectedRecord.humidity >= 65 ? '#fbbf24' : '#2563eb';
+    const hVal = selectedRecord.humidity !== null && selectedRecord.humidity !== undefined ? selectedRecord.humidity : 0.0;
+    ctx.fillStyle = hVal >= 65 ? '#fbbf24' : '#2563eb';
     ctx.font = '700 24px "JetBrains Mono", monospace';
-    ctx.fillText(`${selectedRecord.humidity.toFixed(1)}%`, sX + 160, sY + 50);
+    ctx.fillText(`${hVal.toFixed(1)}%`, sX + 160, sY + 50);
 
     ctx.fillStyle = '#4b5563';
     ctx.font = '700 9px "Outfit", sans-serif';
@@ -282,6 +304,35 @@ export const Logs: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Quick Range Selector Badges */}
+        <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>Quick Filters:</span>
+          <button 
+            type="button" 
+            className="btn btn-secondary" 
+            onClick={setLast7Days}
+            style={{ fontSize: '0.75rem', padding: '4px 10px', background: 'rgba(56,189,248,0.1)', borderColor: 'rgba(56,189,248,0.3)', color: '#38bdf8' }}
+          >
+            📅 Last 7 Days (1 Week)
+          </button>
+          <button 
+            type="button" 
+            className="btn btn-secondary" 
+            onClick={setToday}
+            style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+          >
+            Today
+          </button>
+          <button 
+            type="button" 
+            className="btn btn-secondary" 
+            onClick={clearDateRange}
+            style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+          >
+            All Time
+          </button>
+        </div>
       </div>
 
       {/* Audit Log Table */}
@@ -303,21 +354,21 @@ export const Logs: React.FC = () => {
           </button>
         </div>
 
-        <div className="table-container">
+        <div className="table-container" style={{ maxHeight: '620px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 8 }}>
           <table className="enterprise-table">
             <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Room Zone</th>
-                <th>Camera Feed</th>
-                <th>Temperature</th>
-                <th>Humidity</th>
-                <th style={{ textAlign: 'center' }}>Smoke Status</th>
-                <th style={{ textAlign: 'center' }}>Fire Status</th>
-                <th>AI Risk Level</th>
-                <th style={{ textAlign: 'center' }}>OCR Source</th>
-                <th style={{ textAlign: 'center' }}>Snapshot</th>
-                <th style={{ textAlign: 'center' }}>Details</th>
+              <tr style={{ position: 'sticky', top: 0, background: '#0b1120', zIndex: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
+                <th style={{ background: '#0b1120' }}>Timestamp</th>
+                <th style={{ background: '#0b1120' }}>Room Zone</th>
+                <th style={{ background: '#0b1120' }}>Camera Feed</th>
+                <th style={{ background: '#0b1120' }}>Temperature</th>
+                <th style={{ background: '#0b1120' }}>Humidity</th>
+                <th style={{ textAlign: 'center', background: '#0b1120' }}>Smoke Status</th>
+                <th style={{ textAlign: 'center', background: '#0b1120' }}>Fire Status</th>
+                <th style={{ background: '#0b1120' }}>AI Risk Level</th>
+                <th style={{ textAlign: 'center', background: '#0b1120' }}>OCR Source</th>
+                <th style={{ textAlign: 'center', background: '#0b1120' }}>Snapshot</th>
+                <th style={{ textAlign: 'center', background: '#0b1120' }}>Inspect</th>
               </tr>
             </thead>
             <tbody>
@@ -327,7 +378,7 @@ export const Logs: React.FC = () => {
                 return (
                   <tr key={record.id}>
                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
-                      {new Date(record.timestamp).toLocaleString('en-IN', {
+                      {dateObj.toLocaleString('en-IN', {
                         timeZone: 'Asia/Kolkata',
                         day: '2-digit',
                         month: '2-digit',
@@ -340,8 +391,8 @@ export const Logs: React.FC = () => {
                     </td>
                     <td style={{ fontWeight: 600 }}>Server Room Alpha</td>
                     <td style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Camera-001</td>
-                    <td style={{ fontWeight: 700 }}>{record.temperature.toFixed(1)} °C</td>
-                    <td style={{ fontWeight: 700 }}>{record.humidity.toFixed(1)} %RH</td>
+                    <td style={{ fontWeight: 700 }}>{record.temperature !== null && record.temperature !== undefined ? `${record.temperature.toFixed(1)} °C` : '—'}</td>
+                    <td style={{ fontWeight: 700 }}>{record.humidity !== null && record.humidity !== undefined ? `${record.humidity.toFixed(1)} %RH` : '—'}</td>
                     <td style={{ textAlign: 'center' }}>
                       {record.smokeDetected ? (
                         <span className="status-badge critical" style={{ fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -386,29 +437,52 @@ export const Logs: React.FC = () => {
                       )}
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      {/* LCD Display Thumbnail Simulation */}
-                      <div 
-                        className="glass-panel"
-                        style={{
-                          padding: '4px 8px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          background: 'rgba(15,23,42,0.6)',
-                          borderColor: record.riskLevel === 'high' 
-                            ? 'rgba(239, 68, 68, 0.3)' 
-                            : record.riskLevel === 'medium'
-                              ? 'rgba(245, 158, 11, 0.3)' 
-                              : 'rgba(34, 197, 94, 0.3)',
-                          borderRadius: 4,
-                          fontSize: '0.7rem',
-                          fontFamily: 'var(--font-mono)'
-                        }}
-                      >
-                        <span style={{ color: 'var(--color-warning)' }}>{record.temperature.toFixed(1)}°</span>
-                        <span style={{ color: 'rgba(255,255,255,0.1)' }}>|</span>
-                        <span style={{ color: 'var(--color-primary)' }}>{record.humidity.toFixed(0)}%</span>
-                      </div>
+                      {record.imagePath ? (
+                        <div 
+                          onClick={() => setSelectedRecord(record)}
+                          style={{
+                            cursor: 'pointer',
+                            display: 'inline-block',
+                            borderRadius: 4,
+                            overflow: 'hidden',
+                            border: '1px solid rgba(56, 189, 248, 0.3)',
+                            width: 64,
+                            height: 42,
+                            position: 'relative',
+                            background: '#090d16'
+                          }}
+                          title="Click to view full camera snapshot image"
+                        >
+                          <img 
+                            src={`http://localhost:8000/${record.imagePath}`} 
+                            alt="Snapshot Thumbnail" 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
+                          />
+                        </div>
+                      ) : (
+                        <div 
+                          className="glass-panel"
+                          style={{
+                            padding: '4px 8px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            background: 'rgba(15,23,42,0.6)',
+                            borderColor: record.riskLevel === 'high' 
+                              ? 'rgba(239, 68, 68, 0.3)' 
+                              : record.riskLevel === 'medium'
+                                ? 'rgba(245, 158, 11, 0.3)' 
+                                : 'rgba(34, 197, 94, 0.3)',
+                            borderRadius: 4,
+                            fontSize: '0.7rem',
+                            fontFamily: 'var(--font-mono)'
+                          }}
+                        >
+                          <span style={{ color: 'var(--color-warning)' }}>{record.temperature !== null && record.temperature !== undefined ? `${record.temperature.toFixed(1)}°` : '—'}</span>
+                          <span style={{ color: 'rgba(255,255,255,0.1)' }}>|</span>
+                          <span style={{ color: 'var(--color-primary)' }}>{record.humidity !== null && record.humidity !== undefined ? `${record.humidity.toFixed(0)}%` : '—'}</span>
+                        </div>
+                      )}
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <button 
@@ -434,35 +508,53 @@ export const Logs: React.FC = () => {
           </table>
         </div>
 
-        {/* Pagination controls */}
-        {totalPages > 1 && (
-          <div className="pagination-controls">
+        {/* Pagination & View Controls */}
+        <div className="pagination-controls" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-              Page {currentPage} of {totalPages}
+              Page {currentPage} of {totalPages} ({totalItems} total logs)
             </span>
-
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button 
-                className="btn btn-secondary"
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                style={{ padding: '6px 12px' }}
-              >
-                <ChevronLeft size={16} />
-                <span>Prev</span>
-              </button>
-              <button 
-                className="btn btn-secondary"
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                style={{ padding: '6px 12px' }}
-              >
-                <span>Next</span>
-                <ChevronRight size={16} />
-              </button>
-            </div>
+            <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginLeft: 12 }}>Rows per page:</span>
+            <select 
+              className="form-input form-select"
+              value={itemsPerPage}
+              onChange={(e) => {
+                setItemsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              style={{ width: 'auto', fontSize: '0.75rem', height: 30, padding: '2px 8px' }}
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={250}>250</option>
+              <option value={500}>500</option>
+              <option value={3000}>All (1 Week+)</option>
+            </select>
           </div>
-        )}
+
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button 
+              className="btn btn-secondary"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              style={{ padding: '6px 12px' }}
+            >
+              <ChevronLeft size={16} />
+              <span>Prev</span>
+            </button>
+            <button 
+              className="btn btn-secondary"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              style={{ padding: '6px 12px' }}
+            >
+              <span>Next</span>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Snapshot Preview modal */}
@@ -475,12 +567,12 @@ export const Logs: React.FC = () => {
               exit={{ opacity: 0, scale: 0.95 }}
               className="modal-content"
               onClick={(e) => e.stopPropagation()}
-              style={{ width: '100%', maxWidth: 440 }}
+              style={{ width: '100%', maxWidth: 540 }}
             >
               <div className="modal-header">
                 <div>
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700 }}>OCR Frame Image Capture</h3>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Capture Index: {selectedRecord.id}</p>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700 }}>OCR Camera Snapshot Capture</h3>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Capture Record: {selectedRecord.id}</p>
                 </div>
                 <button className="icon-button" onClick={() => setSelectedRecord(null)}>
                   <X size={18} />
@@ -488,13 +580,21 @@ export const Logs: React.FC = () => {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div style={{ position: 'relative', width: '100%', aspectRatio: '4/3', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-                  <canvas 
-                    ref={modalCanvasRef}
-                    width={380}
-                    height={285}
-                    style={{ width: '100%', height: '100%', display: 'block' }}
-                  />
+                <div style={{ position: 'relative', width: '100%', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border-color)', background: '#090d16' }}>
+                  {selectedRecord.imagePath ? (
+                    <img 
+                      src={`http://localhost:8000/${selectedRecord.imagePath}`} 
+                      alt="Captured Camera Snapshot" 
+                      style={{ width: '100%', height: 'auto', display: 'block' }} 
+                    />
+                  ) : (
+                    <canvas 
+                      ref={modalCanvasRef}
+                      width={380}
+                      height={285}
+                      style={{ width: '100%', height: '100%', display: 'block' }}
+                    />
+                  )}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: '0.8rem' }}>

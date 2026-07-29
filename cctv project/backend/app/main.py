@@ -98,7 +98,13 @@ async def lifespan(app: FastAPI):
     await seed_database()
 
     # Start scheduler
-    start_scheduler()
+    from app.database.session import async_session_factory
+    from app.repositories.settings_repo import SettingsRepository
+    async with async_session_factory() as db:
+        settings_repo = SettingsRepository(db)
+        config = await settings_repo.get_config()
+        initial_interval = config.ocr_polling_interval_seconds
+    start_scheduler(initial_interval)
 
     yield
 

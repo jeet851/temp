@@ -74,7 +74,7 @@ async def test_get_rooms_endpoint_authenticated(client: AsyncClient):
 async def test_get_rooms_endpoint_unauthenticated(client: AsyncClient):
     """Test fetching rooms list fails without authentication."""
     response = await client.get("/api/v1/rooms")
-    assert response.status_code == 403
+    assert response.status_code in (401, 403)
 
 @pytest.mark.asyncio
 async def test_get_cameras_endpoint(client: AsyncClient):

@@ -4,6 +4,7 @@ from app.repositories.settings_repo import SettingsRepository
 from app.schemas.settings import ThresholdUpdate
 from app.models.system_config import SystemConfig
 from app.websocket.manager import ws_manager
+from app.scheduler.tasks import scheduler
 
 
 class SettingsService:
@@ -25,6 +26,8 @@ class SettingsService:
         config.temp_critical = schema.temp_critical
         config.hum_warning = schema.hum_warning
         config.hum_critical = schema.hum_critical
+        config.ocr_polling_interval_seconds = schema.ocr_polling_interval_seconds
+        config.allow_synthetic_fallback = schema.allow_synthetic_fallback
 
         updated_config = await self.settings_repo.update_config(config)
 
@@ -33,7 +36,16 @@ class SettingsService:
             "tempWarning": updated_config.temp_warning,
             "tempCritical": updated_config.temp_critical,
             "humWarning": updated_config.hum_warning,
-            "humCritical": updated_config.hum_critical
+            "humCritical": updated_config.hum_critical,
+            "ocrPollingIntervalSeconds": updated_config.ocr_polling_interval_seconds,
+            "allowSyntheticFallback": updated_config.allow_synthetic_fallback,
         })
+
+        if scheduler.get_job("ocr_capture"):
+            scheduler.reschedule_job(
+                "ocr_capture", 
+                trigger="interval", 
+                seconds=updated_config.ocr_polling_interval_seconds
+            )
 
         return updated_config

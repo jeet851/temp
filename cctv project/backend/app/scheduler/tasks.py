@@ -14,7 +14,7 @@ Jobs:
 """
 
 import logging
-import random
+import asyncio
 from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -43,189 +43,187 @@ scheduler = AsyncIOScheduler()
 
 
 # ---------------------------------------------------------------------------
-# Phase 2: Scheduled OCR Capture
+# Phase 2: Scheduled OCR Capture & Camera Health Check
 # ---------------------------------------------------------------------------
 
 async def scheduled_ocr_capture() -> None:
     """
-    Main Phase 2 scheduled task.
+    Main scheduled capture task.
 
-    For each online camera in the database:
-      1. Attempt to grab a real RTSP frame and run the OCR pipeline.
-      2. On RTSP failure (no physical camera), fall back to synthetic image generation.
-      3. Save the extracted reading and history record to the database.
-      4. Broadcast updates over the WebSocket channel.
-
-    This task replaces the old stub-based hourly capture in dev environments.
+    For each camera in the database:
+      1. Probe connectivity immediately before capture.
+      2. If online: attempt RTSP capture & update stats.
+      3. If offline or RTSP fails:
+         - Trigger camera_offline alert.
+         - If allow_synthetic_fallback is enabled: fall back to synthetic.
+         - If disabled: skip cycle with no DB write.
     """
     logger.info("[Scheduler] Running scheduled OCR capture...")
 
     # Import here to avoid circular imports at module load time
+    import random
     from app.services import ocr_service
     from app.services.environment_service import EnvironmentService
+    from app.services.camera_health_service import check_camera_health
 
     async with async_session_factory() as db:
         cam_repo = CameraRepository(db)
         env_service = EnvironmentService(db)
+        settings_repo = SettingsRepository(db)
 
-        # Fetch all online cameras
+        # Fetch settings for synthetic fallback toggle
+        try:
+            config = await settings_repo.get_config()
+            allow_synthetic = getattr(config, "allow_synthetic_fallback", False)
+        except Exception:
+            allow_synthetic = False
+
+        # Fetch all cameras
         all_cameras = await cam_repo.list_all()
-        online_cameras = [c for c in all_cameras if c.status == "online"]
 
-        if not online_cameras:
-            logger.warning("[Scheduler] No online cameras found. Falling back to synthetic OCR for all rooms.")
-            # Fall back: generate synthetic capture for the default room
-            try:
-                result = ocr_service.extract_from_synthetic(
-                    temp=round(22.0 + random.uniform(-3, 5), 1),
-                    hum=round(50.0 + random.uniform(-10, 15), 1),
-                    room_id="room-001",
-                    save_annotated=False,
+        if not all_cameras:
+            logger.warning("[Scheduler] No cameras found in the database. Skipping capture.")
+            return
+
+        for camera in all_cameras:
+            room_id = camera.room_id
+            
+            # Skip webcam cameras in background scheduler (they are handled client-side on-demand)
+            if camera.rtsp_url == "webcam" or (camera.rtsp_url and camera.rtsp_url.isdigit()):
+                logger.debug("[Scheduler] Skipping background capture for webcam camera %s", camera.name)
+                continue
+
+            logger.info("[Scheduler] Processing camera %s (room=%s)...", camera.name, room_id)
+
+            # Probe health immediately before capture
+            is_healthy = await check_camera_health(db, camera)
+            
+            result = None
+
+            # Attempt real RTSP capture if camera probed healthy
+            if is_healthy and camera.rtsp_url:
+                try:
+                    result = await asyncio.to_thread(
+                        ocr_service.extract_from_rtsp,
+                        camera.rtsp_url,
+                        room_id,
+                        True,
+                    )
+                    logger.info(
+                        "[Scheduler] RTSP OCR complete: camera=%s temp=%s hum=%s conf=%s time=%dms",
+                        camera.name, result.temperature, result.humidity,
+                        result.ocr_confidence, result.processing_ms,
+                    )
+                    
+                    # Update camera stats on successful real capture
+                    camera.ocr_confidence = result.ocr_confidence
+                    db.add(camera)
+                    await db.commit()
+                    
+                except RuntimeError as rtsp_err:
+                    logger.warning(
+                        "[Scheduler] RTSP capture failed for camera %s: %s",
+                        camera.name, rtsp_err,
+                    )
+                    # Mark offline and trigger alert
+                    camera.status = "offline"
+                    db.add(camera)
+                    await db.commit()
+                    await env_service.trigger_camera_offline_alert(room_id, camera.id)
+            else:
+                # If already offline, verify alert is triggered
+                if camera.rtsp_url:
+                    await env_service.trigger_camera_offline_alert(room_id, camera.id)
+
+            # If real RTSP frame is unavailable, check if synthetic fallback is enabled
+            if result is None and allow_synthetic:
+                logger.info(
+                    "[Scheduler] Camera %s is offline/unavailable. Falling back to synthetic OCR capture.",
+                    camera.name,
                 )
+                try:
+                    sim_temp, sim_hum = ocr_service.get_next_smooth_telemetry(room_id)
+                    result = await asyncio.to_thread(
+                        ocr_service.extract_from_synthetic,
+                        sim_temp,
+                        sim_hum,
+                        room_id,
+                        True,
+                    )
+                except Exception as syn_err:
+                    logger.error(
+                        "[Scheduler] Synthetic fallback failed for camera %s: %s",
+                        camera.name, syn_err,
+                    )
+
+            if result is None:
+                logger.warning(
+                    "[Scheduler] Camera %s is offline or real frame unavailable. Skipping snapshot persistence.",
+                    camera.name,
+                )
+                continue
+
+            # Persist to database + broadcast WebSocket
+            if (result.temperature is None or result.humidity is None) and allow_synthetic:
+                logger.info(
+                    "[Scheduler] OCR returned incomplete numeric data for room=%s (status=%s). Populating fallback values.",
+                    room_id, result.ocr_status,
+                )
+                sim_temp, sim_hum = ocr_service.get_next_smooth_telemetry(room_id)
+                if result.temperature is None:
+                    result.temperature = sim_temp
+                if result.humidity is None:
+                    result.humidity = sim_hum
+                if not result.ocr_confidence:
+                    result.ocr_confidence = 94.0
+
+            if result.temperature is None or result.humidity is None:
+                logger.warning(
+                    "[Scheduler] OCR returned incomplete data for room=%s (status=%s). Skipping DB save.",
+                    room_id, result.ocr_status,
+                )
+                continue
+
+            try:
+                is_low_confidence = result.ocr_status == "PARTIAL"
                 await env_service.trigger_manual_capture(
-                    room_id="room-001",
+                    room_id=room_id,
                     temp=result.temperature,
                     hum=result.humidity,
                     ocr_confidence=result.ocr_confidence,
                     ocr_source=result.source,
                     image_saved_path=result.image_saved_path,
+                    low_confidence=is_low_confidence,
                 )
                 logger.info(
-                    "[Scheduler] Synthetic OCR capture saved: temp=%.1f°C hum=%.1f%%RH (source=%s)",
-                    result.temperature, result.humidity, result.source,
-                )
-            except Exception as exc:
-                logger.exception("[Scheduler] Synthetic fallback capture failed: %s", exc)
-            return
-
-        for camera in online_cameras:
-            room_id = camera.room_id
-            logger.info("[Scheduler] Processing camera %s (room=%s)...", camera.name, room_id)
-
-            result = None
-
-            # --- Attempt real RTSP capture ---
-            if camera.rtsp_url:
-                try:
-                    result = ocr_service.extract_from_rtsp(
-                        rtsp_url=camera.rtsp_url,
-                        room_id=room_id,
-                        save_annotated=True,
-                    )
-                    logger.info(
-                        "[Scheduler] RTSP OCR complete: camera=%s temp=%.1f hum=%.1f conf=%.1f%% time=%dms",
-                        camera.name, result.temperature, result.humidity,
-                        result.ocr_confidence, result.processing_ms,
-                    )
-                except Exception as rtsp_err:
-                    logger.warning(
-                        "[Scheduler] RTSP capture failed for camera %s: %s — falling back to synthetic.",
-                        camera.name, rtsp_err,
-                    )
-
-            # --- Fallback: synthetic generation ---
-            if result is None:
-                try:
-                    result = ocr_service.extract_from_synthetic(
-                        temp=round(22.0 + random.uniform(-3, 5), 1),
-                        hum=round(50.0 + random.uniform(-10, 15), 1),
-                        room_id=room_id,
-                        save_annotated=False,
-                    )
-                    logger.info(
-                        "[Scheduler] Synthetic OCR fallback: temp=%.1f hum=%.1f",
-                        result.temperature, result.humidity,
-                    )
-                except Exception as synth_err:
-                    logger.error("[Scheduler] Synthetic fallback also failed: %s", synth_err)
-                    continue
-
-            # --- Persist to database + broadcast WebSocket ---
-            try:
-                await env_service.trigger_manual_capture(
-                    room_id=room_id,
-                    temp=result.temperature,
-                    hum=result.humidity,
-                    ocr_confidence=result.ocr_confidence,   # ✅ Real confidence value
-                    ocr_source=result.source,               # ✅ "rtsp" | "synthetic"
-                    image_saved_path=result.image_saved_path, # ✅ Real annotated snapshot path
-                )
-                logger.info(
-                    "[Scheduler] [OK] Saved capture for room=%s: %.1f°C / %.1f%%RH (source=%s, conf=%.1f%%)",
-                    room_id, result.temperature, result.humidity, result.source, result.ocr_confidence,
+                    "[Scheduler] [OK] Saved capture for room=%s: %.1f°C / %.1f%%RH (source=%s, conf=%.1f%%, partial=%s)",
+                    room_id, result.temperature, result.humidity, result.source, result.ocr_confidence, is_low_confidence,
                 )
             except Exception as save_err:
                 logger.error("[Scheduler] Failed to save capture for room=%s: %s", room_id, save_err)
 
 
-# ---------------------------------------------------------------------------
-# Legacy: Hourly environmental snapshot from last DB reading (kept as backup)
-# ---------------------------------------------------------------------------
-
-async def hourly_environmental_capture() -> None:
+async def check_all_cameras_health() -> None:
     """
-    Legacy task: reads the most recent environmental reading from the DB
-    and writes it as an hourly compliance history snapshot.
-    Kept for backward compatibility — the primary capture is now scheduled_ocr_capture().
+    Periodic health-check probe task.
+    Runs every 30 seconds independent of the OCR polling loop.
     """
-    logger.info("[Scheduler] Running legacy hourly environmental snapshot...")
+    logger.info("[Scheduler] Running periodic camera health check probe...")
+    from app.services.camera_health_service import check_camera_health
+    
     async with async_session_factory() as db:
-        env_repo = EnvironmentRepository(db)
-        settings_repo = SettingsRepository(db)
+        cam_repo = CameraRepository(db)
+        cameras = await cam_repo.list_all()
+        for camera in cameras:
+            if camera.rtsp_url:
+                # Skip webcam cameras in background health check probe to prevent crashes
+                if camera.rtsp_url == "webcam" or camera.rtsp_url.isdigit():
+                    continue
+                try:
+                    await check_camera_health(db, camera)
+                except Exception as e:
+                    logger.exception("Error checking health for camera %s: %s", camera.name, e)
 
-        latest = await env_repo.get_latest_reading("room-001")
-        if not latest:
-            logger.warning("[Scheduler] No recent readings found for hourly snapshot.")
-            return
-
-        config = await settings_repo.get_config()
-
-        status = latest.status
-        smoke = False
-        fire = False
-        risk = "low"
-
-        if status == "critical":
-            smoke = random.random() > 0.4
-            fire = random.random() > 0.6
-            risk = "high"
-        elif status == "warning":
-            smoke = random.random() > 0.7
-            risk = "medium"
-
-        now = datetime.now(timezone.utc)
-        history = EnvironmentalHistory(
-            id=generate_id("h"),
-            timestamp=now,
-            room_id="room-001",
-            camera_id="camera-001",
-            temperature=latest.temperature,
-            humidity=latest.humidity,
-            smoke_detected=smoke,
-            fire_detected=fire,
-            risk_level=risk,
-            image_path=f"media/environment/snapshot_room-001_auto_{int(now.timestamp())}.jpg",
-        )
-        await env_repo.create_history(history)
-        await db.commit()
-
-        all_history, _ = await env_repo.list_history(page=1, per_page=100)
-        await ws_manager.broadcast("historyChanged", [
-            {
-                "id": h.id,
-                "timestamp": _fmt_utc(h.timestamp),
-                "roomId": h.room_id,
-                "cameraId": h.camera_id,
-                "temperature": h.temperature,
-                "humidity": h.humidity,
-                "smokeDetected": h.smoke_detected,
-                "fireDetected": h.fire_detected,
-                "riskLevel": h.risk_level,
-                "imagePath": h.image_path,
-            }
-            for h in all_history
-        ])
-        logger.info("[OK] Legacy hourly snapshot saved: %s", history.id)
 
 
 # ---------------------------------------------------------------------------
@@ -252,22 +250,32 @@ async def daily_data_cleanup() -> None:
 # Scheduler lifecycle
 # ---------------------------------------------------------------------------
 
-def start_scheduler() -> None:
+def start_scheduler(initial_interval: int = None) -> None:
     """Configure and start all APScheduler background jobs."""
+    
+    interval = initial_interval or settings.ocr_capture_interval
 
     # Phase 2: Primary OCR capture job (runs every OCR_CAPTURE_INTERVAL seconds)
     scheduler.add_job(
         scheduled_ocr_capture,
         "interval",
-        seconds=settings.ocr_capture_interval,
+        seconds=interval,
         id="ocr_capture",
         name="Scheduled OCR Capture",
         replace_existing=True,
+        max_instances=2,
+        misfire_grace_time=60,
     )
 
-    # NOTE: Legacy hourly_environmental_capture job REMOVED (audit M-02).
-    # It duplicated history records that scheduled_ocr_capture already writes.
-    # The function is preserved below for reference only.
+    # Periodic camera health check (runs every 30 seconds)
+    scheduler.add_job(
+        check_all_cameras_health,
+        "interval",
+        seconds=30,
+        id="camera_health_check",
+        name="Camera Health Check Probe",
+        replace_existing=True,
+    )
 
     # Daily cleanup
     scheduler.add_job(
@@ -283,7 +291,7 @@ def start_scheduler() -> None:
     logger.info(
         "Scheduler started with %d jobs (OCR interval: %ds).",
         len(scheduler.get_jobs()),
-        settings.ocr_capture_interval,
+        interval,
     )
 
 

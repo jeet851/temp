@@ -73,7 +73,14 @@ export const environmentService = {
     };
   },
 
-  async triggerManualCapture(roomId: string, temp: number, hum: number): Promise<EnvironmentalHistory> {
+  async triggerManualCapture(
+    roomId: string,
+    temp: number,
+    hum: number,
+    ocrConfidence?: number,
+    ocrSource?: string,
+    imageSavedPath?: string
+  ): Promise<EnvironmentalHistory> {
     if (USE_MOCK) {
       mockEngine.triggerManualCapture(roomId, temp, hum);
       const history = mockEngine.getHistory();
@@ -83,7 +90,10 @@ export const environmentService = {
     const res = await apiClient.post<{ data: EnvironmentalHistory }>('/environment/history', {
       room_id: roomId,
       temperature: temp,
-      humidity: hum
+      humidity: hum,
+      ocr_confidence: ocrConfidence,
+      ocr_source: ocrSource,
+      image_saved_path: imageSavedPath
     });
     return res.data;
   },
@@ -111,6 +121,49 @@ export const environmentService = {
     formData.append('save_annotated', 'true');
 
     const res = await apiClient.post<{ data: OcrResult }>('/ocr/extract', formData);
+    return res.data;
+  },
+
+  async updateOcrConfig(lcdRoi: number[], lcdDetectMode?: 'contour' | 'fixed'): Promise<any> {
+    if (USE_MOCK) {
+      return { success: true };
+    }
+    const payload: any = {
+      lcd_roi: lcdRoi,
+      temp_roi: [lcdRoi[0], lcdRoi[1], lcdRoi[2], Math.round(lcdRoi[3] * 0.5)],
+      hum_roi: [lcdRoi[0] + Math.round(lcdRoi[2] * 0.45), lcdRoi[1] + Math.round(lcdRoi[3] * 0.48), Math.round(lcdRoi[2] * 0.55), Math.round(lcdRoi[3] * 0.52)]
+    };
+    if (lcdDetectMode) {
+      payload.lcd_detect_mode = lcdDetectMode;
+    }
+    const res = await apiClient.put<any>('/ocr/config', payload);
+    return res.data;
+  },
+
+  async getOcrConfig(): Promise<any> {
+    if (USE_MOCK) {
+      return {
+        lcd_roi: [130, 130, 100, 90],
+        temp_roi: [130, 130, 100, 42],
+        hum_roi: [178, 175, 52, 42],
+        lcd_detect_mode: 'contour'
+      };
+    }
+    const res = await apiClient.get<any>('/ocr/config');
+    return res.data;
+  },
+
+  async triggerRtspCapture(roomId: string, rtspUrl?: string): Promise<OcrResult> {
+    if (USE_MOCK) {
+      const res = await this.extractOcr(new Blob(), roomId);
+      res.source = 'rtsp';
+      return res;
+    }
+
+    const payload: Record<string, string> = { source: 'rtsp', room_id: roomId };
+    if (rtspUrl) payload.rtsp_url = rtspUrl;
+
+    const res = await apiClient.post<{ data: OcrResult }>('/ocr/capture', payload);
     return res.data;
   },
 
